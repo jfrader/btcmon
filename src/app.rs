@@ -12,8 +12,8 @@ pub struct App {
     pub running: bool,
     /// counter
     pub counter: u8,
-    /// last hash
-    pub last_hash: String,
+    /// bitcoin
+    pub bitcoin_state: Arc<Mutex<BitcoinState>>,
 }
 
 impl Default for App {
@@ -21,7 +21,7 @@ impl Default for App {
         Self {
             running: true,
             counter: 0,
-            last_hash: String::new(),
+            bitcoin_state: Arc::new(Mutex::new(BitcoinState::new()))
         }
     }
 }
@@ -33,10 +33,7 @@ impl App {
     }
 
     /// Handles the tick event of the terminal.
-    pub fn tick(&mut self, bitcoin_state: Arc<Mutex<BitcoinState>>) {
-        let state = bitcoin_state.lock().unwrap();
-        let last = state.block_hashes.last().unwrap();
-        self.last_hash = last.to_string();
+    pub fn tick(&mut self) {
     }
 
     /// Set running to false to quit the application.

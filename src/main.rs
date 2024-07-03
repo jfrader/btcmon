@@ -1,19 +1,18 @@
 use bitckers::app::{App, AppResult};
-use bitckers::bitcoin::{get_blocks, BitcoinState};
+use bitckers::bitcoin::get_blocks;
 use bitckers::event::{Event, EventHandler};
 use bitckers::handler::handle_key_events;
 use bitckers::tui::Tui;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io;
-use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
     let mut app = App::new();
-    let bitcoin_state = Arc::new(Mutex::new(BitcoinState::new()));
 
-    let writable_bitcoin_state = bitcoin_state.clone();
+    let writable_bitcoin_state = app.bitcoin_state.clone();
+
     tokio::spawn(async move {
         get_blocks(writable_bitcoin_state).await;
     });
@@ -26,10 +25,9 @@ async fn main() -> AppResult<()> {
     tui.init()?;
 
     while app.running {
-        let readable_bitcoin_state = bitcoin_state.clone();
         tui.draw(&mut app)?;
         match tui.events.next().await? {
-            Event::Tick => app.tick(readable_bitcoin_state),
+            Event::Tick => app.tick(),
             Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
