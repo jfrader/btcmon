@@ -12,24 +12,27 @@ use crate::app::App;
 pub fn render(app: &mut App, frame: &mut Frame) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![Constraint::Percentage(100)])
+        .constraints(vec![
+            Constraint::Length(frame.size().height - 1),
+            Constraint::Max(1),
+        ])
         .split(frame.size());
 
-    let bitcoin_state_readable = app.bitcoin_state.clone();
-    let bitcoin_state_locked = bitcoin_state_readable.try_lock().unwrap();
+    let bitcoin_state_locked = app.bitcoin_state.clone();
+    let bitcoin_state = bitcoin_state_locked.try_lock().unwrap();
 
     let text = vec![
         Line::from(vec![
             Span::raw("Block Height: "),
             Span::styled(
-                bitcoin_state_locked.current_height.to_string(),
+                bitcoin_state.current_height.to_string(),
                 Style::new().green().italic(),
             ),
         ]),
         Line::from(vec![
             Span::raw("Latest Block: "),
             Span::styled(
-                bitcoin_state_locked.last_hash.clone(),
+                bitcoin_state.last_hash.clone(),
                 Style::new().green().italic(),
             ),
         ]),
@@ -39,12 +42,20 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     frame.render_widget(
         Paragraph::new(text)
             .block(
-                Block::bordered().padding(Padding::left(1))
+                Block::bordered()
+                    .padding(Padding::left(1))
                     .title("Bitcoin")
                     .title_alignment(Alignment::Center)
                     .border_type(BorderType::Plain),
             )
             .style(Style::default().fg(Color::Cyan).bg(Color::Black)),
         layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(format!("Node {}", bitcoin_state.status))
+            .block(Block::new().padding(Padding::left(1)))
+            .style(Style::default().fg(Color::Cyan).bg(Color::Black)),
+        layout[1],
     );
 }

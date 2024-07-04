@@ -1,5 +1,5 @@
 use bitckers::app::{App, AppResult};
-use bitckers::bitcoin::get_blocks;
+use bitckers::bitcoin::wait_for_blocks;
 use bitckers::event::{Event, EventHandler};
 use bitckers::handler::handle_key_events;
 use bitckers::tui::Tui;
@@ -11,18 +11,25 @@ use std::io;
 async fn main() -> AppResult<()> {
     let mut app = App::new();
 
-    let writable_bitcoin_state = app.bitcoin_state.clone();
-
-    tokio::spawn(async move {
-        get_blocks(writable_bitcoin_state).await;
-    });
-
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new(250);
     let mut tui = Tui::new(terminal, events);
 
     tui.init()?;
+    tui.draw(&mut app)?;
+
+    {
+        match app.bitcoin_state.lock().unwrap().connect() {
+            Ok(_) => {
+                let writable_bitcoin_state = app.bitcoin_state.clone();
+                tokio::spawn(async move {
+                    wait_for_blocks(writable_bitcoin_state).await;
+                });
+            }
+            Err(_) => (),
+        };
+    }
 
     while app.running {
         tui.draw(&mut app)?;
