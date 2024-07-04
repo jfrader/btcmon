@@ -1,7 +1,7 @@
 use bitcoincore_rpc::{json::GetBlockchainInfoResult, Auth, Client, RpcApi};
 use futures::channel::mpsc;
 use std::{
-    fmt,
+    fmt, io,
     sync::{Arc, Mutex},
     thread, time,
 };
@@ -59,7 +59,14 @@ impl BitcoinState {
                     EBitcoinNodeStatus::Online
                 };
 
-                Ok(rpc.get_blockchain_info().unwrap())
+                let try_best_block_hash = rpc.get_best_block_hash();
+                let best_block_hash = try_best_block_hash.unwrap();
+
+                self.current_height = blockchain_info.blocks;
+                self.header_height = blockchain_info.headers;
+                self.push_block(best_block_hash.to_string());
+
+                Ok(blockchain_info)
             }
             Err(e) => {
                 self.status = EBitcoinNodeStatus::Offline;
@@ -68,7 +75,7 @@ impl BitcoinState {
         }
     }
 
-    pub fn connect(&mut self) -> Result<Client, bitcoincore_rpc::Error> {
+    pub async fn connect_rpc(&mut self) -> Result<Client, bitcoincore_rpc::Error> {
         let rpc = Client::new(
             "127.0.0.1:18443",
             Auth::UserPass("polaruser".to_string(), "polarpass".to_string()),
@@ -81,18 +88,54 @@ impl BitcoinState {
         let blockchain_info = self.check_rpc_connection(&rpc);
 
         match blockchain_info {
-            Ok(blockchain_info) => {
-                let try_best_block_hash = rpc.get_best_block_hash();
-                let best_block_hash = try_best_block_hash.unwrap();
+            Ok(_) => Ok(rpc),
+            Err(e) => Err(e),
+        }
+    }
 
-                self.current_height = blockchain_info.blocks;
-                self.header_height = blockchain_info.headers;
-                self.push_block(best_block_hash.to_string());
-            }
-            Err(_) => (),
+    pub async fn connect_zmq(&mut self) -> zeromq::ZmqResult<zeromq::SubSocket> {
+        let mut socket = zeromq::SubSocket::new();
+
+        if let Err(_) = tokio::time::timeout(
+            time::Duration::from_millis(5000),
+            socket.connect("tcp://127.0.0.1:28334"),
+        )
+        .await
+        {
+            return Err(zeromq::ZmqError::Network(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "Failed to connect to ZMQ",
+            )));
         }
 
-        Ok(rpc)
+        if let Err(_) = tokio::time::timeout(
+            time::Duration::from_millis(5000),
+            socket.subscribe("hashblock"),
+        )
+        .await
+        {
+            return Err(zeromq::ZmqError::Network(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "Failed to subscribe to ZMQ",
+            )));
+        }
+
+        Ok(socket)
+    }
+
+    // @todo: implement this fn
+    pub fn check_zmq_connection(
+        &mut self,
+        monitor: &mut mpsc::Receiver<zeromq::SocketEvent>,
+    ) -> i32 {
+        match monitor.try_next() {
+            Ok(Some(t)) => {
+                dbg!(t);
+                0
+            }
+            Ok(None) => 1,
+            Err(_) => 2,
+        }
     }
 
     pub fn push_block(&mut self, hash: String) {
@@ -107,38 +150,26 @@ impl BitcoinState {
     }
 }
 
-pub fn check_zmq_connection(monitor: &mut mpsc::Receiver<zeromq::SocketEvent>) -> i32 {
-    match monitor.try_next() {
-        Ok(Some(t)) => {
-            dbg!(t);
-            0
-        }
-        Ok(None) => 1,
-        Err(_) => 2,
-    }
-}
-
-pub async fn wait_for_blocks(state: Arc<Mutex<BitcoinState>>) {
-    let mut socket = zeromq::SubSocket::new();
-    socket
-        .connect("tcp://127.0.0.1:28334")
-        .await
-        .expect("Failed to connect");
-
-    socket
-        .subscribe("hashblock")
-        .await
-        .expect("Failed to subscribe");
-
+pub async fn wait_for_blocks(mut socket: zeromq::SubSocket, state: Arc<Mutex<BitcoinState>>) {
     loop {
-        // dbg!(state.clone().lock().unwrap().block_hashes.last());
-        let repl: zeromq::ZmqMessage = socket.recv().await.unwrap();
-        // let event: String = String::from_utf8(repl.get(0).unwrap().to_vec()).unwrap();
+        let is_connected = match state.lock().unwrap().status {
+            EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
+            _ => true,
+        };
 
-        let hash = hex::encode(repl.get(1).unwrap());
+        if is_connected {
+            // dbg!(state.clone().lock().unwrap().block_hashes.last());
+            let repl: zeromq::ZmqMessage = socket.recv().await.unwrap();
+            // let event: String = String::from_utf8(repl.get(0).unwrap().to_vec()).unwrap();
 
-        let mut unlocked_state = state.lock().unwrap();
-        unlocked_state.push_block(hash.to_string());
-        unlocked_state.increase_height();
+            let hash = hex::encode(repl.get(1).unwrap());
+
+            let mut unlocked_state = state.lock().unwrap();
+            unlocked_state.push_block(hash.to_string());
+            unlocked_state.increase_height();
+        } else {
+            let _ = socket.close();
+            break;
+        };
     }
 }

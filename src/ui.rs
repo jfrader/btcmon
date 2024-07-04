@@ -19,7 +19,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         .split(frame.size());
 
     let bitcoin_state_locked = app.bitcoin_state.clone();
-    let bitcoin_state = bitcoin_state_locked.try_lock().unwrap();
+    let bitcoin_state = bitcoin_state_locked.lock().unwrap();
 
     let text = vec![
         Line::from(vec![
