@@ -1,3 +1,4 @@
+use crate::{app::App, bitcoin::EBitcoinNodeStatus};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style, Stylize},
@@ -5,8 +6,23 @@ use ratatui::{
     widgets::{Block, BorderType, Padding, Paragraph},
     Frame,
 };
+use tui_popup::{Popup, SizedWrapper};
 
-use crate::{app::App, bitcoin::EBitcoinNodeStatus};
+fn render_newblock_popup(frame: &mut Frame, height: u64) {
+    let sized_paragraph = SizedWrapper {
+        inner: Paragraph::new(vec![
+            Line::from(""),
+            Line::from(vec![Span::raw("Height")]),
+            Line::from(vec![Span::raw(height.to_string())]),
+            Line::from(""),
+        ]).centered(),
+        width: 21,
+        height: 4,
+    };
+
+    let popup = Popup::new(" New block! ", sized_paragraph);
+    frame.render_widget(&popup, frame.size());
+}
 
 /// Renders the user interface widgets.
 pub fn render(app: &mut App, frame: &mut Frame) {
@@ -26,11 +42,18 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         ])
         .split(main_layout[1]);
 
-    let throbber = throbber_widgets_tui::Throbber::default().throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
+    let throbber = throbber_widgets_tui::Throbber::default()
+        .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
 
     let bitcoin_state_locked = app.bitcoin_state.clone();
     let bitcoin_state = bitcoin_state_locked.lock().unwrap();
     let status_border_style = get_status_color(&bitcoin_state.status);
+
+    if let Some(time) = bitcoin_state.last_hash_time {
+        if time.elapsed().as_secs() < 10 && bitcoin_state.status == EBitcoinNodeStatus::Online {
+            render_newblock_popup(frame, bitcoin_state.current_height);
+        }
+    }
 
     let text = vec![
         Line::from(vec![
@@ -63,13 +86,22 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         main_layout[0],
     );
 
-    frame.render_widget(throbber, status_bar_layout[0]);
+    if bitcoin_state.status == EBitcoinNodeStatus::Connecting
+        || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
+    {
+        frame.render_widget(throbber, status_bar_layout[0]);
+    } else {
+        frame.render_widget(
+            Block::new().style(Style::default().fg(Color::White).bg(Color::Black)),
+            status_bar_layout[0],
+        );
+    }
 
     frame.render_widget(
         Paragraph::new(format!("Node {}", bitcoin_state.status))
             .block(Block::new().padding(Padding::left(1)))
             .style(Style::default().fg(Color::White).bg(Color::Black)),
-            status_bar_layout[1],
+        status_bar_layout[1],
     );
 }
 

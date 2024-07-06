@@ -5,11 +5,12 @@ use std::{
     sync::{Arc, Mutex},
     thread, time,
 };
+use tokio::time::Instant;
 use zeromq::{Socket, SocketRecv};
 
 use crate::config::Settings;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EBitcoinNodeStatus {
     Offline,
     Connecting,
@@ -29,6 +30,7 @@ pub struct BitcoinState {
     pub current_height: u64,
     pub header_height: u64,
     pub last_hash: String,
+    pub last_hash_time: Option<Instant>,
 }
 
 impl Default for BitcoinState {
@@ -38,6 +40,7 @@ impl Default for BitcoinState {
             current_height: 0,
             header_height: 0,
             last_hash: String::new(),
+            last_hash_time: None,
         }
     }
 }
@@ -79,7 +82,7 @@ impl BitcoinState {
 
         self.current_height = blockchain_info.blocks;
         self.header_height = blockchain_info.headers;
-        self.push_block(best_block_hash.to_string());
+        self.push_block(best_block_hash.to_string(), false);
     }
 
     // @todo: implement this fn
@@ -101,8 +104,11 @@ impl BitcoinState {
         self.status = status;
     }
 
-    pub fn push_block(&mut self, hash: String) {
+    pub fn push_block(&mut self, hash: String, notify: bool) {
         self.last_hash = hash;
+        if notify {
+            self.last_hash_time = Some(Instant::now());
+        }
     }
 
     pub fn increase_height(&mut self) {
@@ -127,7 +133,7 @@ pub async fn wait_for_blocks(mut socket: zeromq::SubSocket, state: Arc<Mutex<Bit
             let hash = hex::encode(repl.get(1).unwrap());
 
             let mut state_locked = state.lock().unwrap();
-            state_locked.push_block(hash.to_string());
+            state_locked.push_block(hash.to_string(), true);
             state_locked.increase_height();
         } else {
             let _ = socket.close();
@@ -168,11 +174,7 @@ pub async fn connect_zmq(
 
     if let Err(_) = tokio::time::timeout(
         time::Duration::from_millis(5000),
-        socket.connect(
-            vec!["tcp://", host, ":", hashblock_port]
-                .join("")
-                .as_str(),
-        ),
+        socket.connect(vec!["tcp://", host, ":", hashblock_port].join("").as_str()),
     )
     .await
     {
@@ -200,8 +202,7 @@ pub async fn connect_zmq(
 pub async fn try_connect_to_node(
     config_provider: Settings,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
-) -> Result<(), io::Error>
-{
+) -> Result<(), io::Error> {
     let unlocked_bitcoin_state = bitcoin_state.lock().unwrap().status.clone();
 
     match unlocked_bitcoin_state {
@@ -215,8 +216,7 @@ pub async fn try_connect_to_node(
 pub async fn connect_to_node(
     config: Settings,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
-) -> Result<(), io::Error>
-{
+) -> Result<(), io::Error> {
     {
         let mut state = bitcoin_state.lock().unwrap();
         state.set_status(EBitcoinNodeStatus::Connecting);
