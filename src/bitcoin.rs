@@ -261,34 +261,37 @@ where
                 .await;
 
                 if let Ok(socket) = socket {
-                    let connect_state = bitcoin_state.clone();
-                    tokio::spawn(async move {
-                        wait_for_blocks(socket, connect_state).await;
-                    });
-
-                    let try_connection_state = bitcoin_state.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            let is_connected = match try_connection_state.lock().unwrap().status {
-                                EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => {
-                                    false
-                                }
-                                _ => true,
-                            };
-
-                            if is_connected {
+                    {
+                        let connect_state = bitcoin_state.clone();
+                        tokio::spawn(async move {
+                            wait_for_blocks(socket, connect_state).await;
+                        });
+                    }
+                    {
+                        let try_connection_state = bitcoin_state.clone();
+                        tokio::spawn(async move {
+                            loop {
+                                let is_connected = match try_connection_state.lock().unwrap().status
                                 {
-                                    let _ = try_connection_state
-                                        .lock()
-                                        .unwrap()
-                                        .check_rpc_connection(&rpc);
+                                    EBitcoinNodeStatus::Connecting
+                                    | EBitcoinNodeStatus::Offline => false,
+                                    _ => true,
+                                };
+
+                                if is_connected {
+                                    {
+                                        let _ = try_connection_state
+                                            .lock()
+                                            .unwrap()
+                                            .check_rpc_connection(&rpc);
+                                    }
+                                    thread::sleep(check_interval);
+                                } else {
+                                    break;
                                 }
-                                thread::sleep(check_interval);
-                            } else {
-                                break;
                             }
-                        }
-                    });
+                        });
+                    }
                     break;
                 };
             };
