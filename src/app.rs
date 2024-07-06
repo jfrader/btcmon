@@ -8,33 +8,33 @@ pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 /// Application.
 #[derive(Debug)]
 pub struct App {
-    /// Is the application running?
+    pub tick_rate: u16,
     pub running: bool,
-    /// counter
     pub counter: u8,
-    /// bitcoin
     pub bitcoin_state: Arc<Mutex<BitcoinState>>,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
+            tick_rate: 0,
             running: true,
             counter: 0,
-            bitcoin_state: Arc::new(Mutex::new(BitcoinState::new()))
+            bitcoin_state: Arc::new(Mutex::new(BitcoinState::new())),
         }
     }
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(tick_rate: u16) -> Self {
+        let mut _self = Self::default();
+        _self.tick_rate = tick_rate;
+        _self
     }
 
     /// Handles the tick event of the terminal.
-    pub fn tick(&mut self) {
-    }
+    pub fn tick(&mut self) {}
 
     /// Set running to false to quit the application.
     pub fn quit(&mut self) {

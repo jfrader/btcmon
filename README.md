@@ -15,7 +15,7 @@ Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node
 ## Usage
 
 ```sh
-btcmon --bitcoin_core_host=localhost --bitcoin_core_rpc_port=8332 --bitcoin_core_zmq_hashblock_port=18332
+btcmon --bitcoin_core.rpc_user="user" --bitcoin_core.rpc_password="password"
 ```
 
 ## License

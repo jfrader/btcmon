@@ -1,76 +1,70 @@
+use argmap::List;
+use config::{Config, ConfigError, File};
+use serde_derive::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Default, Clone)]
-pub struct Config {
-    pub bitcoin_core_host: String,
-    pub bitcoin_core_rpc_port: u16,
-    pub bitcoin_core_rpc_user: String,
-    pub bitcoin_core_rpc_password: String,
-    pub bitcoin_core_zmq_hashblock_port: u16,
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct BitcoinCore {
+    pub host: String,
+    pub rpc_port: String,
+    pub rpc_user: String,
+    pub rpc_password: String,
+    pub zmq_hashblock_port: String,
 }
 
-pub trait ConfigProvider {
-    fn get_config(&self) -> &Config;
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct Settings {
+    pub tick_rate: String,
+    pub bitcoin_core: BitcoinCore,
 }
 
-#[derive(Clone)]
-pub struct CmdConfigProvider(Config);
+impl Settings {
+    pub fn new(_args: List, argv: HashMap<String, Vec<String>>) -> Result<Self, ConfigError> {
+        let homedir = home::home_dir().unwrap();
+        let home_path = homedir.as_path().to_str();
 
-impl CmdConfigProvider {
-    pub fn new(_args: Vec<String>, argv: HashMap<String, Vec<String>>) -> Self {
-        let bitcoin_core_host = argv
-            .get("bitcoin_core_host")
-            .unwrap_or(&vec!["localhost".to_string()])
-            .to_vec()
-            .to_vec();
-        let bitcoin_core_rpc_port = argv
-            .get("bitcoin_core_rpc_port")
-            .unwrap_or(&vec!["8332".to_string()])
-            .to_vec()
-            .to_vec();
-        let bitcoin_core_zmq_hashblock_port = argv
-            .get("bitcoin_core_zmq_hashblock_port")
-            .unwrap_or(&vec!["28332".to_string()])
-            .to_vec()
-            .to_vec();
-        let bitcoin_core_rpc_user = argv
-            .get("bitcoin_core_rpc_user")
-            .unwrap_or(&vec!["username".to_string()])
-            .to_vec()
-            .to_vec();
-        let bitcoin_core_rpc_password = argv
-            .get("bitcoin_core_rpc_password")
-            .unwrap_or(&vec!["password".to_string()])
-            .to_vec()
-            .to_vec();
+        let mut s = Config::builder()
+            .set_default("tick_rate", 250)?
+            .set_default("bitcoin_core.host", "localhost")?
+            .set_default("bitcoin_core.rpc_port", 8332)?
+            .set_default("bitcoin_core.rpc_user", "username")?
+            .set_default("bitcoin_core.rpc_password", "password")?
+            .set_default("bitcoin_core.zmq_hashblock_port", 28332)?;
 
-        let config = Config {
-            bitcoin_core_host: bitcoin_core_host.first().unwrap().to_string(),
-            bitcoin_core_rpc_port: bitcoin_core_rpc_port
-                .first()
-                .unwrap()
-                .parse::<u16>()
+        let mut default_config_file: String = String::from("/etc/btcmon/btcmon.toml");
+
+        let config_file = match (argv.contains_key("c"), argv.contains_key("config")) {
+            (true, false) => argv
+                .get("c")
+                .and_then(|v| Some(v.first().unwrap().as_str()))
                 .unwrap(),
-            bitcoin_core_rpc_user: bitcoin_core_rpc_user.first().unwrap().to_string(),
-            bitcoin_core_rpc_password: bitcoin_core_rpc_password.first().unwrap().to_string(),
-            bitcoin_core_zmq_hashblock_port: bitcoin_core_zmq_hashblock_port
-                .first()
-                .unwrap()
-                .parse::<u16>()
+            (false, true) | (true, true) => argv
+                .get("config")
+                .and_then(|v| Some(v.first().unwrap().as_str()))
                 .unwrap(),
+            _ => match home_path {
+                Some(home_path) => {
+                    default_config_file = vec![home_path, "/.btcmon/btcmon.toml"].join("");
+                    default_config_file.as_str()
+                }
+                _ => default_config_file.as_str(),
+            },
         };
-        CmdConfigProvider(config)
-    }
-}
 
-impl ConfigProvider for CmdConfigProvider {
-    fn get_config(&self) -> &Config {
-        &self.0
-    }
-}
+        s = s.add_source(File::with_name(config_file).required(false));
 
-impl Default for CmdConfigProvider {
-    fn default() -> Self {
-        Self::new(Vec::new(), HashMap::new())
+        let args = argv.clone();
+        for key in argv.into_keys() {
+            if let Some(value) = args
+                .get(&key)
+                .and_then(|v| Some(v.first().unwrap().as_str()))
+            {
+                s = s.set_override(key, value.to_string())?;
+            }
+        }
+
+        s.build()?.try_deserialize()
     }
 }

@@ -7,7 +7,7 @@ use std::{
 };
 use zeromq::{Socket, SocketRecv};
 
-use crate::config::ConfigProvider;
+use crate::config::Settings;
 
 #[derive(Clone, Debug)]
 pub enum EBitcoinNodeStatus {
@@ -138,7 +138,7 @@ pub async fn wait_for_blocks(mut socket: zeromq::SubSocket, state: Arc<Mutex<Bit
 
 pub async fn connect_rpc(
     host: &String,
-    port: &u16,
+    port: &String,
     user: &String,
     password: &String,
 ) -> Result<(Client, GetBlockchainInfoResult), io::Error> {
@@ -162,7 +162,7 @@ pub async fn connect_rpc(
 
 pub async fn connect_zmq(
     host: &String,
-    hashblock_port: &u16,
+    hashblock_port: &String,
 ) -> Result<zeromq::SubSocket, io::Error> {
     let mut socket = zeromq::SubSocket::new();
 
@@ -197,12 +197,10 @@ pub async fn connect_zmq(
     Ok(socket)
 }
 
-pub async fn try_connect_to_node<T>(
-    config_provider: T,
+pub async fn try_connect_to_node(
+    config_provider: Settings,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
 ) -> Result<(), io::Error>
-where
-    T: ConfigProvider,
 {
     let unlocked_bitcoin_state = bitcoin_state.lock().unwrap().status.clone();
 
@@ -214,14 +212,11 @@ where
     }
 }
 
-pub async fn connect_to_node<T>(
-    config_provider: T,
+pub async fn connect_to_node(
+    config: Settings,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
 ) -> Result<(), io::Error>
-where
-    T: ConfigProvider,
 {
-    let config = config_provider.get_config().clone();
     {
         let mut state = bitcoin_state.lock().unwrap();
         state.set_status(EBitcoinNodeStatus::Connecting);
@@ -240,10 +235,10 @@ where
             retries = retries + 1;
 
             let result = connect_rpc(
-                &config.bitcoin_core_host,
-                &config.bitcoin_core_rpc_port,
-                &config.bitcoin_core_rpc_user,
-                &config.bitcoin_core_rpc_password,
+                &config.bitcoin_core.host,
+                &config.bitcoin_core.rpc_port,
+                &config.bitcoin_core.rpc_user,
+                &config.bitcoin_core.rpc_password,
             )
             .await;
 
@@ -255,8 +250,8 @@ where
                 }
 
                 let socket = connect_zmq(
-                    &config.bitcoin_core_host,
-                    &config.bitcoin_core_zmq_hashblock_port,
+                    &config.bitcoin_core.host,
+                    &config.bitcoin_core.zmq_hashblock_port,
                 )
                 .await;
 

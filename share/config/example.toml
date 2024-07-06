@@ -1,0 +1,7 @@
+tick_rate = 250
+
+[bitcoin_core]
+rpc_port = 18443
+rpc_user = "polaruser"
+rpc_password = "polarpass"
+zmq_hashblock_port = 28334
