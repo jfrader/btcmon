@@ -21,14 +21,12 @@ async fn main() -> AppResult<()> {
     let config_provider = CmdConfigProvider::new(args, argv);
 
     tui.init()?;
-    tui.draw(&mut app)?;
-
-    try_connect_to_node(config_provider.clone(), app.bitcoin_state.clone())
-        .await
-        .unwrap_or_else(|_| ());
 
     while app.running {
         tui.draw(&mut app)?;
+        try_connect_to_node(config_provider.clone(), app.bitcoin_state.clone())
+            .await
+            .unwrap_or_else(|_| ());
         match tui.events.next().await? {
             Event::Tick => app.tick(),
             Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
