@@ -26,8 +26,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         ])
         .split(main_layout[1]);
 
-    let throbber = throbber_widgets_tui::Throbber::default().throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
-
     let bitcoin_state_locked = app.bitcoin_state.clone();
     let bitcoin_state = bitcoin_state_locked.lock().unwrap();
     let status_border_style = get_status_color(&bitcoin_state.status);
@@ -62,8 +60,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             .style(status_border_style),
         main_layout[0],
     );
-
-    frame.render_widget(throbber, status_bar_layout[0]);
 
     frame.render_widget(
         Paragraph::new(format!("Node {}", bitcoin_state.status))

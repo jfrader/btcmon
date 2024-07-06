@@ -224,7 +224,6 @@ dependencies = [
  "hex",
  "ratatui",
  "serde",
- "throbber-widgets-tui",
  "tokio",
  "zeromq",
 ]
@@ -981,16 +980,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "throbber-widgets-tui"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "685391f5e78b08989c1014f5a0edddf6751e0726b6a8dd1bdcc98d05921b19b6"
-dependencies = [
- "rand",
- "ratatui",
 ]
 
 [[package]]
