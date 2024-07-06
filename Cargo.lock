@@ -45,6 +45,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
 
 [[package]]
+name = "argmap"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c007f456524f3f1e06e8929963425b5dadf8616d9110ea0809840c16997994e9"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -121,12 +127,14 @@ checksum = "d965446196e3b7decd44aa7ee49e31d630118f90ef12f97900f262eb915c951d"
 name = "bitckers"
 version = "0.1.0"
 dependencies = [
+ "argmap",
  "bitcoincore-rpc",
  "crossterm",
  "futures",
  "hex",
  "ratatui",
  "serde",
+ "throbber-widgets-tui",
  "tokio",
  "zeromq",
 ]
@@ -973,6 +981,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "throbber-widgets-tui"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "685391f5e78b08989c1014f5a0edddf6751e0726b6a8dd1bdcc98d05921b19b6"
+dependencies = [
+ "rand",
+ "ratatui",
 ]
 
 [[package]]

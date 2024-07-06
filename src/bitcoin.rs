@@ -1,18 +1,22 @@
 use bitcoincore_rpc::{json::GetBlockchainInfoResult, Auth, Client, RpcApi};
 use futures::channel::mpsc;
 use std::{
-    fmt, io,
+    fmt,
+    io,
     sync::{Arc, Mutex},
-    thread, time,
+    // thread,
+    time,
 };
 use zeromq::{Socket, SocketRecv};
+
+use crate::config::ConfigProvider;
 
 #[derive(Clone, Debug)]
 pub enum EBitcoinNodeStatus {
     Offline,
     Connecting,
     Online,
-    BlocksBehind,
+    Synchronizing,
 }
 
 impl fmt::Display for EBitcoinNodeStatus {
@@ -26,7 +30,6 @@ pub struct BitcoinState {
     pub status: EBitcoinNodeStatus,
     pub current_height: u64,
     pub header_height: u64,
-    pub block_hashes: Vec<String>,
     pub last_hash: String,
 }
 
@@ -36,7 +39,6 @@ impl Default for BitcoinState {
             status: EBitcoinNodeStatus::Connecting,
             current_height: 0,
             header_height: 0,
-            block_hashes: Vec::new(),
             last_hash: String::new(),
         }
     }
@@ -54,7 +56,7 @@ impl BitcoinState {
         match rpc.get_blockchain_info() {
             Ok(blockchain_info) => {
                 self.status = if blockchain_info.blocks < blockchain_info.headers {
-                    EBitcoinNodeStatus::BlocksBehind
+                    EBitcoinNodeStatus::Synchronizing
                 } else {
                     EBitcoinNodeStatus::Online
                 };
@@ -75,37 +77,56 @@ impl BitcoinState {
         }
     }
 
-    pub async fn connect_rpc(&mut self) -> Result<Client, bitcoincore_rpc::Error> {
+    pub async fn connect_rpc(
+        &mut self,
+        host: &String,
+        port: &u16,
+        user: &String,
+        password: &String,
+    ) -> Result<Client, io::Error> {
+        self.status = EBitcoinNodeStatus::Connecting;
+
         let rpc = Client::new(
-            "127.0.0.1:18443",
-            Auth::UserPass("polaruser".to_string(), "polarpass".to_string()),
+            vec![host.as_str(), &port.to_string()].join(":").as_str(),
+            Auth::UserPass(user.to_string(), password.to_string()),
         )
         .unwrap();
 
-        let duration = time::Duration::from_millis(1200);
-        thread::sleep(duration);
+        // let duration = time::Duration::from_millis(1200);
+        // thread::sleep(duration);
 
         let blockchain_info = self.check_rpc_connection(&rpc);
 
         match blockchain_info {
             Ok(_) => Ok(rpc),
-            Err(e) => Err(e),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "Failed to connect to Bitcoin RPC",
+            )),
         }
     }
 
-    pub async fn connect_zmq(&mut self) -> zeromq::ZmqResult<zeromq::SubSocket> {
+    pub async fn connect_zmq(
+        &mut self,
+        host: &String,
+        hashblock_port: &u16,
+    ) -> Result<zeromq::SubSocket, io::Error> {
         let mut socket = zeromq::SubSocket::new();
 
         if let Err(_) = tokio::time::timeout(
             time::Duration::from_millis(5000),
-            socket.connect("tcp://127.0.0.1:28334"),
+            socket.connect(
+                vec!["tcp://", host.as_str(), ":", &hashblock_port.to_string()]
+                    .join("")
+                    .as_str(),
+            ),
         )
         .await
         {
-            return Err(zeromq::ZmqError::Network(io::Error::new(
+            return Err(io::Error::new(
                 io::ErrorKind::ConnectionRefused,
-                "Failed to connect to ZMQ",
-            )));
+                "Failed to connect to ZMQ hashblock",
+            ));
         }
 
         if let Err(_) = tokio::time::timeout(
@@ -114,10 +135,10 @@ impl BitcoinState {
         )
         .await
         {
-            return Err(zeromq::ZmqError::Network(io::Error::new(
+            return Err(io::Error::new(
                 io::ErrorKind::ConnectionRefused,
-                "Failed to subscribe to ZMQ",
-            )));
+                "Failed to subscribe to ZMQ hashblock",
+            ));
         }
 
         Ok(socket)
@@ -139,7 +160,6 @@ impl BitcoinState {
     }
 
     pub fn push_block(&mut self, hash: String) {
-        self.block_hashes.push(hash.clone());
         self.last_hash = hash;
     }
 
@@ -171,5 +191,66 @@ pub async fn wait_for_blocks(mut socket: zeromq::SubSocket, state: Arc<Mutex<Bit
             let _ = socket.close();
             break;
         };
+    }
+}
+
+pub async fn try_connect_to_node<T>(
+    config_provider: T,
+    bitcoin_state: Arc<Mutex<BitcoinState>>,
+) -> Result<(), io::Error>
+where
+    T: ConfigProvider,
+{
+    let mut unlocked_bitcoin_state = bitcoin_state.lock().unwrap();
+    match unlocked_bitcoin_state.status {
+        EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => {
+            let config = config_provider.get_config();
+            let rpc = unlocked_bitcoin_state
+                .connect_rpc(
+                    &config.bitcoin_core_host,
+                    &config.bitcoin_core_rpc_port,
+                    &config.bitcoin_core_rpc_user,
+                    &config.bitcoin_core_rpc_password,
+                )
+                .await?;
+            let socket = unlocked_bitcoin_state
+                .connect_zmq(
+                    &config.bitcoin_core_host,
+                    &config.bitcoin_core_zmq_hashblock_port,
+                )
+                .await?;
+
+            let wait_blocks_state = bitcoin_state.clone();
+            tokio::spawn(async move {
+                wait_for_blocks(socket, wait_blocks_state).await;
+            });
+
+            let try_connection_state = bitcoin_state.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(time::Duration::from_millis(10000));
+
+                loop {
+                    let is_connected = match try_connection_state.lock().unwrap().status {
+                        EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
+                        _ => true,
+                    };
+
+                    if is_connected {
+                        {
+                            let _ = try_connection_state
+                                .lock()
+                                .unwrap()
+                                .check_rpc_connection(&rpc);
+                        }
+                        interval.tick().await;
+                    } else {
+                        break;
+                    }
+                }
+            });
+
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }

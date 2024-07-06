@@ -24,7 +24,7 @@ pub enum Event {
 #[derive(Debug)]
 pub struct EventHandler {
     /// Event sender channel.
-    sender: mpsc::UnboundedSender<Event>,
+    pub sender: mpsc::UnboundedSender<Event>,
     /// Event receiver channel.
     receiver: mpsc::UnboundedReceiver<Event>,
     /// Event handler thread.

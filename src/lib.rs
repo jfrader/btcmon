@@ -15,3 +15,6 @@ pub mod handler;
 
 /// Bitcoin
 pub mod bitcoin;
+
+/// Config
+pub mod config;
