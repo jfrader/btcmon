@@ -1,9 +1,9 @@
-use bitckers::app::{App, AppResult};
-use bitckers::bitcoin::try_connect_to_node;
-use bitckers::config::CmdConfigProvider;
-use bitckers::event::{Event, EventHandler};
-use bitckers::handler::handle_key_events;
-use bitckers::tui::Tui;
+use btcmon::app::{App, AppResult};
+use btcmon::bitcoin::try_connect_to_node;
+use btcmon::config::CmdConfigProvider;
+use btcmon::event::{Event, EventHandler};
+use btcmon::handler::handle_key_events;
+use btcmon::tui::Tui;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::{env, io};

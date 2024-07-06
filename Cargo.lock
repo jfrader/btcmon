@@ -124,22 +124,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d965446196e3b7decd44aa7ee49e31d630118f90ef12f97900f262eb915c951d"
 
 [[package]]
-name = "bitckers"
-version = "0.1.0"
-dependencies = [
- "argmap",
- "bitcoincore-rpc",
- "crossterm",
- "futures",
- "hex",
- "ratatui",
- "serde",
- "throbber-widgets-tui",
- "tokio",
- "zeromq",
-]
-
-[[package]]
 name = "bitcoin"
 version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,6 +212,22 @@ name = "bitflags"
 version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
+
+[[package]]
+name = "btcmon"
+version = "0.1.0"
+dependencies = [
+ "argmap",
+ "bitcoincore-rpc",
+ "crossterm",
+ "futures",
+ "hex",
+ "ratatui",
+ "serde",
+ "throbber-widgets-tui",
+ "tokio",
+ "zeromq",
+]
 
 [[package]]
 name = "bytes"
