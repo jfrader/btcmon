@@ -143,7 +143,7 @@ pub async fn connect_rpc(
     password: &String,
 ) -> Result<(Client, GetBlockchainInfoResult), io::Error> {
     let rpc = Client::new(
-        vec![host.as_str(), &port.to_string()].join(":").as_str(),
+        vec![host.as_str(), port.as_str()].join(":").as_str(),
         Auth::UserPass(user.to_string(), password.to_string()),
     )
     .unwrap();
@@ -169,7 +169,7 @@ pub async fn connect_zmq(
     if let Err(_) = tokio::time::timeout(
         time::Duration::from_millis(5000),
         socket.connect(
-            vec!["tcp://", host.as_str(), ":", &hashblock_port.to_string()]
+            vec!["tcp://", host, ":", hashblock_port]
                 .join("")
                 .as_str(),
         ),
