@@ -21,7 +21,7 @@ or
 
 ```sh
 btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/btcmon.toml
-````
+```
 
 See the [Example config.toml](share/config/example.toml) file
 
