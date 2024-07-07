@@ -224,15 +224,21 @@ pub async fn connect_zmq(
     Ok(socket)
 }
 
+#[allow(unused_assignments)]
 pub fn try_connect_to_node(
     config_provider: Settings,
     app: &mut App,
     tracker: TaskTracker,
     token: CancellationToken,
 ) {
-    let unlocked_bitcoin_state = app.bitcoin_state.lock().unwrap().status.clone();
+    let mut status = EBitcoinNodeStatus::Online;
 
-    let _ = match unlocked_bitcoin_state {
+    {
+        let state_locked = app.bitcoin_state.lock();
+        status = state_locked.unwrap().status.clone();
+    }
+    
+    match status {
         EBitcoinNodeStatus::Offline => Some(spawn_connect_to_node(
             config_provider,
             app.bitcoin_state.clone(),
@@ -344,6 +350,7 @@ fn spawn_blocks_receiver(
     })
 }
 
+#[allow(unused_assignments)]
 async fn wait_for_blocks(
     mut socket: zeromq::SubSocket,
     state: Arc<Mutex<BitcoinState>>,
@@ -353,10 +360,15 @@ async fn wait_for_blocks(
         if token.is_cancelled() {
             break;
         }
+        
+        let mut status = EBitcoinNodeStatus::Online;
 
-        let is_online = state.lock().unwrap().status == EBitcoinNodeStatus::Online;
+        {
+            let state_locked = state.lock();
+            status = state_locked.unwrap().status.clone();
+        }
 
-        if is_online {
+        if status == EBitcoinNodeStatus::Online {
             let receiver = tokio::select! {
                 receiver = socket.recv() => Some(receiver),
                 () = token.cancelled() => None,
@@ -391,6 +403,7 @@ fn spawn_rpc_checker(
     })
 }
 
+#[allow(unused_assignments)]
 async fn rpc_checker(
     bitcoin_state: Arc<Mutex<BitcoinState>>,
     rpc: Client,
@@ -403,7 +416,14 @@ async fn rpc_checker(
             break;
         }
 
-        let is_connected = match try_connection_state.lock().unwrap().status {
+        let mut status = EBitcoinNodeStatus::Online;
+
+        {
+            let state_locked = try_connection_state.lock();
+            status = state_locked.unwrap().status.clone();
+        }
+
+        let is_connected = match status {
             EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
             _ => true,
         };
@@ -413,6 +433,7 @@ async fn rpc_checker(
                 let mut state = try_connection_state.lock().unwrap();
                 let _ = state.try_fetch_blockchain_info(&rpc);
                 state.estimate_fees(&rpc);
+                drop(state);
             }
             tokio::select! {
                 () = tokio::time::sleep(check_interval) => {},
