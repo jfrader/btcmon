@@ -14,16 +14,16 @@ Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node
 
 ## Usage
 
-````sh
+```sh
 btcmon --bitcoin_core.rpc_user="user" --bitcoin_core.rpc_password="password"
-
+```
 or
 
 ```sh
 btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/btcmon.toml
 ````
 
-[Example config.toml](share/config/example.toml)
+See the [Example config.toml](share/config/example.toml) file
 
 ## Screenshots
 
