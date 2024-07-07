@@ -237,7 +237,7 @@ pub fn try_connect_to_node(
         let state_locked = app.bitcoin_state.lock();
         status = state_locked.unwrap().status.clone();
     }
-    
+
     match status {
         EBitcoinNodeStatus::Offline => Some(spawn_connect_to_node(
             config_provider,
@@ -293,13 +293,18 @@ async fn connect_to_node(
         }
         retries = retries + 1;
 
-        let result = connect_rpc(
-            &config.bitcoin_core.host,
-            &config.bitcoin_core.rpc_port,
-            &config.bitcoin_core.rpc_user,
-            &config.bitcoin_core.rpc_password,
-        )
-        .await;
+        let result = tokio::select! {
+            res = connect_rpc(
+                &config.bitcoin_core.host,
+                &config.bitcoin_core.rpc_port,
+                &config.bitcoin_core.rpc_user,
+                &config.bitcoin_core.rpc_password,
+            ) => res,
+            () = token.cancelled() => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Timed out connecting to Bitcoin RPC",
+            )),
+        };
 
         if let Ok((rpc, blockchain_info)) = result {
             {
@@ -308,11 +313,16 @@ async fn connect_to_node(
                 connect_state_locked.update_blockchain_info(&rpc, &blockchain_info);
             }
 
-            let socket = connect_zmq(
-                &config.bitcoin_core.host,
-                &config.bitcoin_core.zmq_hashblock_port,
-            )
-            .await;
+            let socket = tokio::select! {
+                res = connect_zmq(
+                    &config.bitcoin_core.host,
+                    &config.bitcoin_core.zmq_hashblock_port,
+                ) => res,
+                () = token.cancelled() => Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Timed out connecting to Bitcoin ZMQ",
+                ))
+            };
 
             let rpc_tracker = tracker.clone();
             let rpc_token = token.clone();
@@ -360,7 +370,7 @@ async fn wait_for_blocks(
         if token.is_cancelled() {
             break;
         }
-        
+
         let mut status = EBitcoinNodeStatus::Online;
 
         {
