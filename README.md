@@ -4,14 +4,6 @@
 
 Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node.
 
-## Screenshots
-
-![1](share/screenshots/1.jpg?raw=true)
-
-![2](share/screenshots/2.jpg?raw=true)
-
-![3](share/screenshots/3.jpg?raw=true)
-
 ## Installation
 
 `git clone https://github.com/jfrader/btcmon.git`
@@ -22,16 +14,24 @@ Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node
 
 ## Usage
 
-```sh
+````sh
 btcmon --bitcoin_core.rpc_user="user" --bitcoin_core.rpc_password="password"
 
 or
 
 ```sh
 btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/btcmon.toml
-```
+````
 
 [Example config.toml](share/config/example.toml)
+
+## Screenshots
+
+![1](share/screenshots/1.jpg?raw=true)
+
+![2](share/screenshots/2.jpg?raw=true)
+
+![3](share/screenshots/3.jpg?raw=true)
 
 ## License
 
