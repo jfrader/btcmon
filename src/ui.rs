@@ -44,15 +44,12 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         ])
         .split(main_layout[2]);
 
-    let throbber = throbber_widgets_tui::Throbber::default()
-        .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
-
     let bitcoin_state_locked = app.bitcoin_state.clone();
     let bitcoin_state = bitcoin_state_locked.lock().unwrap();
     let status_border_style = get_status_color(&bitcoin_state.status);
 
-    let mut fee_state = bitcoin_state.fees.clone();
-    fee_state.dedup_by(|a, b| a.fee == b.fee);
+    let fee_state = bitcoin_state.fees.clone();
+    // fee_state.dedup_by(|a, b| a.fee == b.fee);
 
     let fees: Vec<Line> = fee_state
         .iter()
@@ -120,6 +117,8 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     if bitcoin_state.status == EBitcoinNodeStatus::Connecting
         || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
     {
+        let throbber = throbber_widgets_tui::Throbber::default()
+            .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
         frame.render_widget(throbber, status_bar_layout[0]);
     } else {
         frame.render_widget(

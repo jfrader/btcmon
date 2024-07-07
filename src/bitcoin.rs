@@ -353,12 +353,10 @@ async fn wait_for_blocks(
         if token.is_cancelled() {
             break;
         }
-        let is_connected = match state.lock().unwrap().status {
-            EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
-            _ => true,
-        };
 
-        if is_connected {
+        let is_online = state.lock().unwrap().status == EBitcoinNodeStatus::Online;
+
+        if is_online {
             let receiver = tokio::select! {
                 receiver = socket.recv() => Some(receiver),
                 () = token.cancelled() => None,
@@ -402,6 +400,7 @@ async fn rpc_checker(
         if token.is_cancelled() {
             break;
         }
+
         let is_connected = match try_connection_state.lock().unwrap().status {
             EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
             _ => true,
