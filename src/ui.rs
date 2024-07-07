@@ -67,16 +67,32 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         })
         .collect();
 
-    let text: Vec<Line> = vec![
-        Line::from(vec![
+    let block_height = match bitcoin_state.status {
+        EBitcoinNodeStatus::Synchronizing => Line::from(vec![
+            Span::raw("Block Height: "),
+            Span::styled(
+                bitcoin_state.current_height.to_string(),
+                Style::new().white().italic(),
+            ),
+            Span::raw("/"),
+            Span::styled(
+                bitcoin_state.header_height.to_string(),
+                Style::new().blue().italic(),
+            )
+        ]),
+        _ => Line::from(vec![
             Span::raw("Block Height: "),
             Span::styled(
                 bitcoin_state.current_height.to_string(),
                 Style::new().white().italic(),
             ),
         ]),
+    };
+
+    let text: Vec<Line> = vec![
+        block_height,
         Line::from(vec![
-            Span::raw("Latest Block: "),
+            Span::raw("Last Block: "),
             Span::styled(
                 bitcoin_state.last_hash.clone(),
                 Style::new().white().italic(),
