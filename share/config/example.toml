@@ -1,6 +1,7 @@
 tick_rate = 250
 
 [bitcoin_core]
+host = "127.0.0.1"
 rpc_port = 18443
 rpc_user = "polaruser"
 rpc_password = "polarpass"
