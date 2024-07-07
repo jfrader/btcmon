@@ -1,4 +1,8 @@
-use bitcoincore_rpc::{json::GetBlockchainInfoResult, Auth, Client, RpcApi};
+use bitcoin::Amount;
+use bitcoincore_rpc::{
+    json::{EstimateSmartFeeResult, GetBlockchainInfoResult},
+    Auth, Client, RpcApi,
+};
 use futures::channel::mpsc;
 use std::{
     fmt, io,
@@ -6,9 +10,10 @@ use std::{
     thread, time,
 };
 use tokio::time::Instant;
-use zeromq::{Socket, SocketRecv};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use zeromq::{Socket, SocketRecv, SubSocket};
 
-use crate::config::Settings;
+use crate::{app::App, config::Settings};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum EBitcoinNodeStatus {
@@ -25,12 +30,20 @@ impl fmt::Display for EBitcoinNodeStatus {
 }
 
 #[derive(Clone, Debug)]
+pub struct EstimatedFee {
+    pub fee: Amount,
+    pub target: u8,
+    pub received_target: u8,
+}
+
+#[derive(Clone, Debug)]
 pub struct BitcoinState {
     pub status: EBitcoinNodeStatus,
     pub current_height: u64,
     pub header_height: u64,
     pub last_hash: String,
     pub last_hash_time: Option<Instant>,
+    pub fees: Vec<EstimatedFee>,
 }
 
 impl Default for BitcoinState {
@@ -41,6 +54,23 @@ impl Default for BitcoinState {
             header_height: 0,
             last_hash: String::new(),
             last_hash_time: None,
+            fees: vec![
+                EstimatedFee {
+                    fee: Amount::ZERO,
+                    target: 1,
+                    received_target: 1,
+                },
+                EstimatedFee {
+                    fee: Amount::ZERO,
+                    target: 3,
+                    received_target: 3,
+                },
+                EstimatedFee {
+                    fee: Amount::ZERO,
+                    target: 10,
+                    received_target: 10,
+                },
+            ],
         }
     }
 }
@@ -50,7 +80,7 @@ impl BitcoinState {
         Self::default()
     }
 
-    pub fn check_rpc_connection(
+    pub fn try_fetch_blockchain_info(
         &mut self,
         rpc: &Client,
     ) -> Result<GetBlockchainInfoResult, bitcoincore_rpc::Error> {
@@ -63,6 +93,25 @@ impl BitcoinState {
                 self.set_status(EBitcoinNodeStatus::Offline);
                 Err(e)
             }
+        }
+    }
+
+    pub fn set_estimated_fee(&mut self, index: usize, target: u8, result: EstimateSmartFeeResult) {
+        if let (Some(fee), blocks) = (result.fee_rate, result.blocks) {
+            self.fees[index] = EstimatedFee {
+                fee,
+                target,
+                received_target: i64::try_into(blocks).unwrap_or(1),
+            }
+        }
+    }
+
+    pub fn estimate_fees(&mut self, rpc: &Client) {
+        for (i, fee) in self.fees.clone().iter().enumerate() {
+            match rpc.estimate_smart_fee(fee.target.try_into().unwrap_or(0), None) {
+                Ok(estimation) => self.set_estimated_fee(i.into(), fee.target, estimation),
+                _ => (),
+            };
         }
     }
 
@@ -115,30 +164,6 @@ impl BitcoinState {
         if let Some(res) = self.current_height.checked_add(1) {
             self.current_height = res;
         }
-    }
-}
-
-pub async fn wait_for_blocks(mut socket: zeromq::SubSocket, state: Arc<Mutex<BitcoinState>>) {
-    loop {
-        let is_connected = match state.lock().unwrap().status {
-            EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
-            _ => true,
-        };
-
-        if is_connected {
-            // dbg!(state.clone().lock().unwrap().block_hashes.last());
-            let repl: zeromq::ZmqMessage = socket.recv().await.unwrap();
-            // let event: String = String::from_utf8(repl.get(0).unwrap().to_vec()).unwrap();
-
-            let hash = hex::encode(repl.get(1).unwrap());
-
-            let mut state_locked = state.lock().unwrap();
-            state_locked.push_block(hash.to_string(), true);
-            state_locked.increase_height();
-        } else {
-            let _ = socket.close();
-            break;
-        };
     }
 }
 
@@ -199,100 +224,191 @@ pub async fn connect_zmq(
     Ok(socket)
 }
 
-pub async fn try_connect_to_node(
+pub fn try_connect_to_node(
     config_provider: Settings,
-    bitcoin_state: Arc<Mutex<BitcoinState>>,
-) -> Result<(), io::Error> {
-    let unlocked_bitcoin_state = bitcoin_state.lock().unwrap().status.clone();
+    app: &mut App,
+    tracker: TaskTracker,
+    token: CancellationToken,
+) {
+    let unlocked_bitcoin_state = app.bitcoin_state.lock().unwrap().status.clone();
 
-    match unlocked_bitcoin_state {
-        EBitcoinNodeStatus::Offline => {
-            connect_to_node(config_provider, bitcoin_state.clone()).await
-        }
-        _ => Ok(()),
-    }
+    let _ = match unlocked_bitcoin_state {
+        EBitcoinNodeStatus::Offline => Some(spawn_connect_to_node(
+            config_provider,
+            app.bitcoin_state.clone(),
+            tracker,
+            token,
+        )),
+        _ => None,
+    };
 }
 
-pub async fn connect_to_node(
+pub fn spawn_connect_to_node(
     config: Settings,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
-) -> Result<(), io::Error> {
+    tracker: TaskTracker,
+    token: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
     {
         let mut state = bitcoin_state.lock().unwrap();
         state.set_status(EBitcoinNodeStatus::Connecting);
     }
-    tokio::spawn(async move {
-        let check_interval = time::Duration::from_millis(30 * 1000);
-        let connecting_interval = time::Duration::from_millis(3 * 1000);
-        let sleep_interval = time::Duration::from_millis(15 * 1000);
-        let mut retries: u8 = 0;
 
-        loop {
-            if retries > 3 {
-                retries = 0;
-                thread::sleep(sleep_interval);
+    let subtasks_tracker = tracker.clone();
+    let subtasks_token = token.clone();
+    tracker.spawn(async move {
+        tokio::select! {
+            () = connect_to_node(config, bitcoin_state, subtasks_tracker, subtasks_token) => {
+            },
+            () = token.cancelled() => {
+            },
+        }
+    })
+}
+
+async fn connect_to_node(
+    config: Settings,
+    bitcoin_state: Arc<Mutex<BitcoinState>>,
+    tracker: TaskTracker,
+    token: CancellationToken,
+) {
+    let connecting_interval = time::Duration::from_millis(3 * 1000);
+    let sleep_interval = time::Duration::from_millis(15 * 1000);
+    let mut retries: u8 = 0;
+
+    loop {
+        if token.is_cancelled() {
+            break;
+        }
+        if retries > 3 {
+            retries = 0;
+            thread::sleep(sleep_interval);
+        }
+        retries = retries + 1;
+
+        let result = connect_rpc(
+            &config.bitcoin_core.host,
+            &config.bitcoin_core.rpc_port,
+            &config.bitcoin_core.rpc_user,
+            &config.bitcoin_core.rpc_password,
+        )
+        .await;
+
+        if let Ok((rpc, blockchain_info)) = result {
+            {
+                let connect_state = bitcoin_state.clone();
+                let mut connect_state_locked = connect_state.lock().unwrap();
+                connect_state_locked.update_blockchain_info(&rpc, &blockchain_info);
             }
-            retries = retries + 1;
 
-            let result = connect_rpc(
+            let socket = connect_zmq(
                 &config.bitcoin_core.host,
-                &config.bitcoin_core.rpc_port,
-                &config.bitcoin_core.rpc_user,
-                &config.bitcoin_core.rpc_password,
+                &config.bitcoin_core.zmq_hashblock_port,
             )
             .await;
 
-            if let Ok((rpc, blockchain_info)) = result {
-                {
-                    let connect_state = bitcoin_state.clone();
-                    let mut connect_state_locked = connect_state.lock().unwrap();
-                    connect_state_locked.update_blockchain_info(&rpc, &blockchain_info);
-                }
-
-                let socket = connect_zmq(
-                    &config.bitcoin_core.host,
-                    &config.bitcoin_core.zmq_hashblock_port,
-                )
-                .await;
-
-                if let Ok(socket) = socket {
-                    {
-                        let connect_state = bitcoin_state.clone();
-                        tokio::spawn(async move {
-                            wait_for_blocks(socket, connect_state).await;
-                        });
-                    }
-                    {
-                        let try_connection_state = bitcoin_state.clone();
-                        tokio::spawn(async move {
-                            loop {
-                                let is_connected = match try_connection_state.lock().unwrap().status
-                                {
-                                    EBitcoinNodeStatus::Connecting
-                                    | EBitcoinNodeStatus::Offline => false,
-                                    _ => true,
-                                };
-
-                                if is_connected {
-                                    {
-                                        let _ = try_connection_state
-                                            .lock()
-                                            .unwrap()
-                                            .check_rpc_connection(&rpc);
-                                    }
-                                    thread::sleep(check_interval);
-                                } else {
-                                    break;
-                                }
-                            }
-                        });
-                    }
-                    break;
-                };
+            let rpc_tracker = tracker.clone();
+            let rpc_token = token.clone();
+            if let Ok(socket) = socket {
+                let blocks_tracker = tracker.clone();
+                let blocks_token = token.clone();
+                spawn_blocks_receiver(bitcoin_state.clone(), socket, blocks_tracker, blocks_token);
+                spawn_rpc_checker(bitcoin_state.clone(), rpc, rpc_tracker, rpc_token);
+                break;
+            } else {
+                spawn_rpc_checker(bitcoin_state, rpc, rpc_tracker, rpc_token);
+                break;
             };
-            thread::sleep(connecting_interval);
-        }
-    });
+        };
+        thread::sleep(connecting_interval);
+    }
+}
 
-    Ok(())
+fn spawn_blocks_receiver(
+    bitcoin_state: Arc<Mutex<BitcoinState>>,
+    socket: SubSocket,
+    tracker: TaskTracker,
+    token: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    let connect_state = bitcoin_state.clone();
+    tracker.spawn(async move {
+        tokio::select! {
+            () = wait_for_blocks(socket, connect_state, token.clone()) => {
+            },
+            () = token.cancelled() => {
+            },
+        }
+    })
+}
+
+async fn wait_for_blocks(
+    mut socket: zeromq::SubSocket,
+    state: Arc<Mutex<BitcoinState>>,
+    token: CancellationToken,
+) {
+    loop {
+        if token.is_cancelled() {
+            break;
+        }
+        let is_connected = match state.lock().unwrap().status {
+            EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
+            _ => true,
+        };
+
+        if is_connected {
+            let repl: zeromq::ZmqMessage = socket.recv().await.unwrap();
+            let hash = hex::encode(repl.get(1).unwrap());
+            let mut state_locked = state.lock().unwrap();
+            state_locked.push_block(hash.to_string(), true);
+            state_locked.increase_height();
+        } else {
+            let _ = socket.close();
+            break;
+        };
+    }
+}
+
+fn spawn_rpc_checker(
+    bitcoin_state: Arc<Mutex<BitcoinState>>,
+    rpc: Client,
+    tracker: TaskTracker,
+    token: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    tracker.spawn(async move {
+        tokio::select! {
+            () = rpc_checker(bitcoin_state, rpc, token.clone()) => {
+            },
+            () = token.cancelled() => {
+            },
+        }
+    })
+}
+
+async fn rpc_checker(
+    bitcoin_state: Arc<Mutex<BitcoinState>>,
+    rpc: Client,
+    token: CancellationToken,
+) {
+    let check_interval = time::Duration::from_millis(30 * 1000);
+    let try_connection_state = bitcoin_state.clone();
+    loop {
+        if token.is_cancelled() {
+            break;
+        }
+        let is_connected = match try_connection_state.lock().unwrap().status {
+            EBitcoinNodeStatus::Connecting | EBitcoinNodeStatus::Offline => false,
+            _ => true,
+        };
+
+        if is_connected {
+            {
+                let mut state = try_connection_state.lock().unwrap();
+                let _ = state.try_fetch_blockchain_info(&rpc);
+                state.estimate_fees(&rpc);
+            }
+            thread::sleep(check_interval);
+        } else {
+            break;
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{app::App, bitcoin::EBitcoinNodeStatus};
+use crate::{app::App, bitcoin::EBitcoinNodeStatus, config::Settings};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style, Stylize},
@@ -15,7 +15,8 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
             Line::from(vec![Span::raw("Height")]),
             Line::from(vec![Span::raw(height.to_string())]),
             Line::from(""),
-        ]).centered(),
+        ])
+        .centered(),
         width: 21,
         height: 4,
     };
@@ -25,11 +26,12 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
 }
 
 /// Renders the user interface widgets.
-pub fn render(app: &mut App, frame: &mut Frame) {
+pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Length(frame.size().height - 1),
+            Constraint::Length(frame.size().height / 2),
+            Constraint::Length(frame.size().height / 2 - 1),
             Constraint::Max(1),
         ])
         .split(frame.size());
@@ -40,7 +42,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             Constraint::Length(1),
             Constraint::Length(frame.size().width - 1),
         ])
-        .split(main_layout[1]);
+        .split(main_layout[2]);
 
     let throbber = throbber_widgets_tui::Throbber::default()
         .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
@@ -55,7 +57,26 @@ pub fn render(app: &mut App, frame: &mut Frame) {
         }
     }
 
-    let text = vec![
+    let mut fee_state = bitcoin_state.fees.clone();
+    fee_state.dedup_by(|a, b| a.fee == b.fee);
+
+    let fees: Vec<Line> = fee_state
+        .iter()
+        .map(|estimation| {
+            let fee: f64 = estimation.fee.to_float_in(bitcoin::Denomination::SAT);
+            Line::from(vec![
+                Span::raw(estimation.received_target.to_string()),
+                Span::raw(" blocks: "),
+                Span::styled(
+                    ((4.0 / 3000.0) * fee).trunc().to_string(),
+                    Style::new().white().italic(),
+                ),
+                Span::styled(" sats/vbyte ", Style::new().white().italic()),
+            ])
+        })
+        .collect();
+
+    let text: Vec<Line> = vec![
         Line::from(vec![
             Span::raw("Block Height: "),
             Span::styled(
@@ -70,7 +91,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
                 Style::new().white().italic(),
             ),
         ]),
-        "---".into(),
+        "------".into(),
     ];
 
     frame.render_widget(
@@ -78,12 +99,28 @@ pub fn render(app: &mut App, frame: &mut Frame) {
             .block(
                 Block::bordered()
                     .padding(Padding::left(1))
-                    .title("Bitcoin")
+                    .title(match config.bitcoin_core.host.as_str() {
+                        "localhost" => "Bitcoin Core",
+                        _ => config.bitcoin_core.host.as_str(),
+                    })
                     .title_alignment(Alignment::Center)
                     .border_type(BorderType::Plain),
             )
             .style(status_border_style),
         main_layout[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(fees)
+            .block(
+                Block::bordered()
+                    .padding(Padding::left(1))
+                    .title("Fees")
+                    .title_alignment(Alignment::Center)
+                    .border_type(BorderType::Plain),
+            )
+            .style(status_border_style),
+        main_layout[1],
     );
 
     if bitcoin_state.status == EBitcoinNodeStatus::Connecting

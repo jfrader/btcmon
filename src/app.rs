@@ -8,7 +8,6 @@ pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
 /// Application.
 #[derive(Debug)]
 pub struct App {
-    pub tick_rate: u16,
     pub running: bool,
     pub counter: u8,
     pub bitcoin_state: Arc<Mutex<BitcoinState>>,
@@ -17,7 +16,6 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
-            tick_rate: 0,
             running: true,
             counter: 0,
             bitcoin_state: Arc::new(Mutex::new(BitcoinState::new())),
@@ -27,10 +25,8 @@ impl Default for App {
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new(tick_rate: u16) -> Self {
-        let mut _self = Self::default();
-        _self.tick_rate = tick_rate;
-        _self
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Handles the tick event of the terminal.

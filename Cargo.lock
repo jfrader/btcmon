@@ -236,6 +236,7 @@ name = "btcmon"
 version = "0.1.0"
 dependencies = [
  "argmap",
+ "bitcoin",
  "bitcoincore-rpc",
  "config",
  "crossterm",
@@ -247,6 +248,7 @@ dependencies = [
  "serde_derive",
  "throbber-widgets-tui",
  "tokio",
+ "tokio-util",
  "tui-big-text",
  "tui-popup",
  "zeromq",
@@ -1454,6 +1456,8 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
+ "hashbrown 0.14.3",
  "pin-project-lite",
  "tokio",
 ]

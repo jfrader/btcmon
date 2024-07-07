@@ -21,3 +21,5 @@ home = "0.5.9"
 throbber-widgets-tui = "0.6.0"
 tui-popup = "0.3.3"
 tui-big-text = "0.4.5"
+bitcoin = "0.32.2"
+tokio-util = { version = "0.7.11", features = ["rt"] }
