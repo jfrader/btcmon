@@ -301,8 +301,8 @@ async fn connect_to_node(
                 &config.bitcoin_core.rpc_password,
             ) => res,
             () = token.cancelled() => Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "Timed out connecting to Bitcoin RPC",
+                io::ErrorKind::ConnectionAborted,
+                "Aborting undergoing connection to Bitcoin RPC",
             )),
         };
 
@@ -319,8 +319,8 @@ async fn connect_to_node(
                     &config.bitcoin_core.zmq_hashblock_port,
                 ) => res,
                 () = token.cancelled() => Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "Timed out connecting to Bitcoin ZMQ",
+                    io::ErrorKind::ConnectionAborted,
+                    "Aborting undergoing connection to Bitcoin ZMQ",
                 ))
             };
 
