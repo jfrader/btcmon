@@ -365,8 +365,10 @@ async fn wait_for_blocks(
                 let repl: zeromq::ZmqMessage = receiver.unwrap();
                 let hash = hex::encode(repl.get(1).unwrap());
                 let mut state_locked = state.lock().unwrap();
-                state_locked.push_block(hash.to_string(), true);
-                state_locked.increase_height();
+                if state_locked.status == EBitcoinNodeStatus::Online {
+                    state_locked.push_block(hash.to_string(), true);
+                    state_locked.increase_height();
+                }
             }
         } else {
             let _ = socket.close();
