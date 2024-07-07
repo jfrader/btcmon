@@ -21,7 +21,7 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
         height: 4,
     };
 
-    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());;
+    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());
     frame.render_widget(&popup, frame.size());
 }
 

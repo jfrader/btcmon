@@ -7,7 +7,7 @@ use futures::channel::mpsc;
 use std::{
     fmt, io,
     sync::{Arc, Mutex},
-    thread, time,
+    time,
 };
 use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -280,7 +280,10 @@ async fn connect_to_node(
         }
         if retries > 3 {
             retries = 0;
-            thread::sleep(sleep_interval);
+            tokio::select! {
+                () = tokio::time::sleep(sleep_interval) => {},
+                () = token.cancelled() => {},
+            }
         }
         retries = retries + 1;
 
@@ -318,7 +321,11 @@ async fn connect_to_node(
                 break;
             };
         };
-        thread::sleep(connecting_interval);
+
+        tokio::select! {
+            () = tokio::time::sleep(connecting_interval) => {},
+            () = token.cancelled() => {},
+        }
     }
 }
 
@@ -406,7 +413,10 @@ async fn rpc_checker(
                 let _ = state.try_fetch_blockchain_info(&rpc);
                 state.estimate_fees(&rpc);
             }
-            thread::sleep(check_interval);
+            tokio::select! {
+                () = tokio::time::sleep(check_interval) => {},
+                () = token.cancelled() => {},
+            }
         } else {
             break;
         }
