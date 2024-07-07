@@ -21,7 +21,7 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
         height: 4,
     };
 
-    let popup = Popup::new(" New block! ", sized_paragraph);
+    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());;
     frame.render_widget(&popup, frame.size());
 }
 
@@ -50,12 +50,6 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     let bitcoin_state_locked = app.bitcoin_state.clone();
     let bitcoin_state = bitcoin_state_locked.lock().unwrap();
     let status_border_style = get_status_color(&bitcoin_state.status);
-
-    if let Some(time) = bitcoin_state.last_hash_time {
-        if time.elapsed().as_secs() < 10 && bitcoin_state.status == EBitcoinNodeStatus::Online {
-            render_newblock_popup(frame, bitcoin_state.current_height);
-        }
-    }
 
     let mut fee_state = bitcoin_state.fees.clone();
     fee_state.dedup_by(|a, b| a.fee == b.fee);
@@ -140,6 +134,12 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
             .style(Style::default().fg(Color::White).bg(Color::Black)),
         status_bar_layout[1],
     );
+
+    if let Some(time) = bitcoin_state.last_hash_time {
+        if time.elapsed().as_secs() < 10 && bitcoin_state.status == EBitcoinNodeStatus::Online {
+            render_newblock_popup(frame, bitcoin_state.current_height);
+        }
+    }
 }
 
 fn get_status_color(status: &EBitcoinNodeStatus) -> Style {

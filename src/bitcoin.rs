@@ -258,10 +258,8 @@ pub fn spawn_connect_to_node(
     let subtasks_token = token.clone();
     tracker.spawn(async move {
         tokio::select! {
-            () = connect_to_node(config, bitcoin_state, subtasks_tracker, subtasks_token) => {
-            },
-            () = token.cancelled() => {
-            },
+            () = connect_to_node(config, bitcoin_state, subtasks_tracker, subtasks_token) => {},
+            () = token.cancelled() => {},
         }
     })
 }
@@ -333,10 +331,8 @@ fn spawn_blocks_receiver(
     let connect_state = bitcoin_state.clone();
     tracker.spawn(async move {
         tokio::select! {
-            () = wait_for_blocks(socket, connect_state, token.clone()) => {
-            },
-            () = token.cancelled() => {
-            },
+            () = wait_for_blocks(socket, connect_state, token.clone()) => {},
+            () = token.cancelled() => {},
         }
     })
 }
@@ -356,11 +352,17 @@ async fn wait_for_blocks(
         };
 
         if is_connected {
-            let repl: zeromq::ZmqMessage = socket.recv().await.unwrap();
-            let hash = hex::encode(repl.get(1).unwrap());
-            let mut state_locked = state.lock().unwrap();
-            state_locked.push_block(hash.to_string(), true);
-            state_locked.increase_height();
+            let receiver = tokio::select! {
+                receiver = socket.recv() => Some(receiver),
+                () = token.cancelled() => None,
+            };
+            if let Some(receiver) = receiver {
+                let repl: zeromq::ZmqMessage = receiver.unwrap();
+                let hash = hex::encode(repl.get(1).unwrap());
+                let mut state_locked = state.lock().unwrap();
+                state_locked.push_block(hash.to_string(), true);
+                state_locked.increase_height();
+            }
         } else {
             let _ = socket.close();
             break;
@@ -376,10 +378,8 @@ fn spawn_rpc_checker(
 ) -> tokio::task::JoinHandle<()> {
     tracker.spawn(async move {
         tokio::select! {
-            () = rpc_checker(bitcoin_state, rpc, token.clone()) => {
-            },
-            () = token.cancelled() => {
-            },
+            () = rpc_checker(bitcoin_state, rpc, token.clone()) => {},
+            () = token.cancelled() => {},
         }
     })
 }
