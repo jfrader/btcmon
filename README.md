@@ -25,13 +25,9 @@ btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/
 
 See the [Example config.toml](share/config/example.toml) file
 
-## Screenshots
+## Screenshot
 
-![1](share/screenshots/1.jpg?raw=true)
-
-![2](share/screenshots/2.jpg?raw=true)
-
-![3](share/screenshots/3.jpg?raw=true)
+![btcmon](share/screenshots/btcmon.png?raw=true)
 
 ## License
 
