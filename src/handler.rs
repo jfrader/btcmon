@@ -1,6 +1,6 @@
 use crate::{
     app::{App, AppResult},
-    bitcoin::EBitcoinNodeStatus,
+    bitcoin::BitcoinCoreStatus,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -26,7 +26,7 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
             app.decrement_counter();
         }
         KeyCode::Char(' ') => {
-            if app.bitcoin_state.lock().unwrap().status == EBitcoinNodeStatus::Offline {
+            if app.bitcoin_state.lock().unwrap().status == BitcoinCoreStatus::Offline {
                 app.init_bitcoin();
             }
         }

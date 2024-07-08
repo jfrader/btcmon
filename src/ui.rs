@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    bitcoin::{BitcoinState, EBitcoinNodeStatus},
+    bitcoin::{BitcoinCoreStatus, BitcoinState},
     config::Settings,
 };
 use ratatui::{
@@ -90,21 +90,24 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
         height: 4,
     };
 
-    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());
+    let popup = Popup::new(" New block! ", sized_paragraph)
+        .style(Style::new().fg(Color::White).bg(Color::Black));
     frame.render_widget(&popup, frame.size());
 }
 
 fn render_status_bar(frame: &mut Frame, bitcoin_state: &BitcoinState, area: Rect) {
+    let zmq_status_width = 12;
     let status_bar_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![
             Constraint::Length(1),
-            Constraint::Length(frame.size().width - 1),
+            Constraint::Length(frame.size().width - zmq_status_width - 1),
+            Constraint::Length(zmq_status_width),
         ])
         .split(area);
 
-    if bitcoin_state.status == EBitcoinNodeStatus::Connecting
-        || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
+    if bitcoin_state.status == BitcoinCoreStatus::Connecting
+        || bitcoin_state.status == BitcoinCoreStatus::Synchronizing
     {
         let throbber = throbber_widgets_tui::Throbber::default()
             .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
@@ -117,6 +120,12 @@ fn render_status_bar(frame: &mut Frame, bitcoin_state: &BitcoinState, area: Rect
     }
 
     frame.render_widget(
+        Paragraph::new(format!("ZMQ {} ", bitcoin_state.zmq_status))
+            .style(Style::default().fg(Color::White).bg(Color::Black)),
+        status_bar_layout[2],
+    );
+
+    frame.render_widget(
         Paragraph::new(format!("Node {}", bitcoin_state.status))
             .block(Block::new().padding(Padding::left(1)))
             .style(Style::default().fg(Color::White).bg(Color::Black)),
@@ -124,7 +133,7 @@ fn render_status_bar(frame: &mut Frame, bitcoin_state: &BitcoinState, area: Rect
     );
 
     if let Some(time) = bitcoin_state.last_hash_time {
-        if time.elapsed().as_secs() < 15 && bitcoin_state.status == EBitcoinNodeStatus::Online {
+        if time.elapsed().as_secs() < 15 && bitcoin_state.status == BitcoinCoreStatus::Online {
             render_newblock_popup(frame, bitcoin_state.current_height);
         }
     }
@@ -138,23 +147,23 @@ fn render_bitcoin(
     area: Rect,
 ) {
     let block_height = match bitcoin_state.status {
-        EBitcoinNodeStatus::Synchronizing => Line::from(vec![
+        BitcoinCoreStatus::Synchronizing => Line::from(vec![
             Span::raw("Block Height: "),
             Span::styled(
                 bitcoin_state.current_height.to_string(),
-                Style::new().white().italic(),
+                Style::new().fg(Color::White).italic(),
             ),
             Span::raw("/"),
             Span::styled(
                 bitcoin_state.header_height.to_string(),
-                Style::new().blue().italic(),
+                Style::new().fg(Color::Blue).italic(),
             ),
         ]),
         _ => Line::from(vec![
             Span::raw("Block Height: "),
             Span::styled(
                 bitcoin_state.current_height.to_string(),
-                Style::new().white().italic(),
+                Style::new().fg(Color::White).italic(),
             ),
         ]),
     };
@@ -165,7 +174,7 @@ fn render_bitcoin(
             Span::raw("Last Block: "),
             Span::styled(
                 bitcoin_state.last_hash.clone(),
-                Style::new().white().italic(),
+                Style::new().fg(Color::White).italic(),
             ),
         ]),
         "------".into(),
@@ -227,11 +236,11 @@ fn render_price(app: &mut App, frame: &mut Frame, status_style: Style, area: Rec
     }
 }
 
-fn get_status_style(status: &EBitcoinNodeStatus) -> Style {
+fn get_status_style(status: &BitcoinCoreStatus) -> Style {
     match status {
-        EBitcoinNodeStatus::Online => Style::default().fg(Color::Green).bg(Color::Black),
-        EBitcoinNodeStatus::Offline => Style::default().fg(Color::Red).bg(Color::Black),
-        EBitcoinNodeStatus::Connecting => Style::default().fg(Color::Blue).bg(Color::Black),
-        EBitcoinNodeStatus::Synchronizing => Style::default().fg(Color::Blue).bg(Color::Black),
+        BitcoinCoreStatus::Online => Style::default().fg(Color::Green).bg(Color::Black),
+        BitcoinCoreStatus::Offline => Style::default().fg(Color::Red).bg(Color::Black),
+        BitcoinCoreStatus::Connecting => Style::default().fg(Color::Blue).bg(Color::Black),
+        BitcoinCoreStatus::Synchronizing => Style::default().fg(Color::Blue).bg(Color::Black),
     }
 }

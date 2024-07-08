@@ -13,7 +13,6 @@ pub struct BitcoinCoreSettings {
     pub zmq_hashblock_port: String,
 }
 
-
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct PriceSettings {
@@ -27,6 +26,16 @@ pub struct Settings {
     pub tick_rate: String,
     pub price: PriceSettings,
     pub bitcoin_core: BitcoinCoreSettings,
+}
+
+fn match_string_to_bool(value: &str) -> bool {
+    match value {
+        "true" => true,
+        "1" => true,
+        "false" => false,
+        "0" => false,
+        _ => false,
+    }
 }
 
 impl Settings {
@@ -77,14 +86,7 @@ impl Settings {
             {
                 match key.as_str() {
                     "price.enabled" => {
-                        let new_value = match value {
-                            "true" => true,
-                            "1" => true,
-                            "false" => false,
-                            "0" => false,
-                            _ => false,
-                        };
-                        s = s.set_override(key, new_value)?;
+                        s = s.set_override(key, match_string_to_bool(value))?;
                     }
                     _ => {
                         s = s.set_override(key, value.to_string())?;

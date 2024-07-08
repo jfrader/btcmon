@@ -18,7 +18,7 @@ pub enum Event {
     /// Terminal resize.
     Resize(u16, u16),
     /// Reconnect Bitcoin
-    ReconnectBitcoin,
+    BitcoinCoreLostConnection,
     /// Update Price
     PriceUpdate(PriceState),
 }

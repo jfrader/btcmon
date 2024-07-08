@@ -40,7 +40,7 @@ async fn main() -> AppResult<()> {
             Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
-            Event::ReconnectBitcoin => app.init_bitcoin(),
+            Event::BitcoinCoreLostConnection => app.init_bitcoin(),
             Event::PriceUpdate(state) => app.handle_price_update(state),
         }
     }

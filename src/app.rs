@@ -2,7 +2,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::bitcoin::{try_connect_to_node, BitcoinState};
+use crate::bitcoin::{spawn_connect_to_node, BitcoinState};
 use crate::config::Settings;
 use crate::event::Event;
 use crate::price::price::{spawn_price_checker, PriceCurrency, PriceState};
@@ -26,19 +26,17 @@ pub struct App {
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new(
-        sender: mpsc::UnboundedSender<Event>,
-    ) -> Self {
+    pub fn new(sender: mpsc::UnboundedSender<Event>) -> Self {
         let (args, argv) = argmap::parse(env::args());
         let config = Settings::new(args, argv).unwrap();
         Self {
             running: true,
             counter: 0,
             config,
-            sender,
+            sender: sender.clone(),
             thread_tracker: TaskTracker::new(),
             thread_token: CancellationToken::new(),
-            bitcoin_state: Arc::new(Mutex::new(BitcoinState::new())),
+            bitcoin_state: Arc::new(Mutex::new(BitcoinState::new(sender))),
             price_state: PriceState {
                 currency: PriceCurrency::USD,
                 last_price_in_currency: None,
@@ -55,12 +53,7 @@ impl App {
     }
 
     pub fn init_bitcoin(&mut self) {
-        try_connect_to_node(
-            self.config.clone(),
-            self,
-            self.thread_tracker.clone(),
-            self.thread_token.clone(),
-        );
+        spawn_connect_to_node(self, self.thread_tracker.clone(), self.thread_token.clone());
     }
 
     /// Handles the tick event of the terminal.
