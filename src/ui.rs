@@ -140,28 +140,29 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     if config.price.enabled {
         frame.render_widget(fees_block, second_pane_layout[0]);
 
-        let big_text = BigText::builder()
+        let big_price = BigText::builder()
+            .alignment(Alignment::Center)
             .pixel_size(PixelSize::Sextant)
             .style(status_style)
-            .lines(vec![
-                match app.price_state.last_price_in_currency {
-                    Some(v) => vec![v.to_string(), app.price_state.currency.to_string()].join(" ").into(),
-                    None => "-".into(),
-                },
-            ])
+            .lines(vec![match app.price_state.last_price_in_currency {
+                Some(v) => vec![v.trunc().to_string(), app.price_state.currency.to_string()]
+                    .join(" ")
+                    .into(),
+                None => "-".into(),
+            }])
             .build()
             .unwrap();
 
         let price_block = Block::bordered()
-            .padding(Padding::left(1))
-            .title("Coinbase")
+            .padding(Padding::top(1))
+            .title("Price")
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Plain)
             .style(status_style);
 
         let price_block_area = price_block.inner(second_pane_layout[1]);
         frame.render_widget(price_block, second_pane_layout[1]);
-        frame.render_widget(big_text, price_block_area);
+        frame.render_widget(big_price, price_block_area);
     } else {
         frame.render_widget(fees_block, main_layout[1]);
     }
