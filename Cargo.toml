@@ -23,3 +23,6 @@ tui-popup = "0.3.3"
 tui-big-text = "0.4.5"
 bitcoin = "0.32.2"
 tokio-util = { version = "0.7.11", features = ["rt"] }
+reqwest = { version = "0.12.5", features = ["json"] }
+serde_json = "1.0.120"
+async-trait = "0.1.81"

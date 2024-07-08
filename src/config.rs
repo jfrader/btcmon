@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
-pub struct BitcoinCore {
+pub struct BitcoinCoreSettings {
     pub host: String,
     pub rpc_port: String,
     pub rpc_user: String,
@@ -13,11 +13,20 @@ pub struct BitcoinCore {
     pub zmq_hashblock_port: String,
 }
 
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct PriceSettings {
+    pub enabled: bool,
+    pub currency: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct Settings {
     pub tick_rate: String,
-    pub bitcoin_core: BitcoinCore,
+    pub price: PriceSettings,
+    pub bitcoin_core: BitcoinCoreSettings,
 }
 
 impl Settings {
@@ -26,12 +35,17 @@ impl Settings {
         let home_path = homedir.as_path().to_str();
 
         let mut s = Config::builder()
+            // general
             .set_default("tick_rate", 250)?
+            // bitcoin core
             .set_default("bitcoin_core.host", "localhost")?
             .set_default("bitcoin_core.rpc_port", 8332)?
             .set_default("bitcoin_core.rpc_user", "username")?
             .set_default("bitcoin_core.rpc_password", "password")?
-            .set_default("bitcoin_core.zmq_hashblock_port", 28332)?;
+            .set_default("bitcoin_core.zmq_hashblock_port", 28332)?
+            // price
+            .set_default("price.enabled", true)?
+            .set_default("price.currency", "USD")?;
 
         let mut default_config_file: String = String::from("/etc/btcmon/btcmon.toml");
 
@@ -61,7 +75,21 @@ impl Settings {
                 .get(&key)
                 .and_then(|v| Some(v.first().unwrap().as_str()))
             {
-                s = s.set_override(key, value.to_string())?;
+                match key.as_str() {
+                    "price.enabled" => {
+                        let new_value = match value {
+                            "true" => true,
+                            "1" => true,
+                            "false" => false,
+                            "0" => false,
+                            _ => false,
+                        };
+                        s = s.set_override(key, new_value)?;
+                    }
+                    _ => {
+                        s = s.set_override(key, value.to_string())?;
+                    }
+                }
             }
         }
 

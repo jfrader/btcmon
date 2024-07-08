@@ -4,7 +4,7 @@ use crossterm::event::{Event as CrosstermEvent, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::app::AppResult;
+use crate::{app::AppResult, price::price::PriceState};
 
 /// Terminal events.
 #[derive(Clone, Copy, Debug)]
@@ -17,6 +17,10 @@ pub enum Event {
     Mouse(MouseEvent),
     /// Terminal resize.
     Resize(u16, u16),
+    /// Reconnect Bitcoin
+    ReconnectBitcoin,
+    /// Update Price
+    PriceUpdate(PriceState),
 }
 
 /// Terminal event handler.
@@ -26,16 +30,19 @@ pub struct EventHandler {
     /// Event sender channel.
     pub sender: mpsc::UnboundedSender<Event>,
     /// Event receiver channel.
-    receiver: mpsc::UnboundedReceiver<Event>,
+    pub receiver: mpsc::UnboundedReceiver<Event>,
     /// Event handler thread.
     handler: tokio::task::JoinHandle<()>,
 }
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`].
-    pub fn new(tick_rate: u64) -> Self {
+    pub fn new(
+        tick_rate: u64,
+        sender: mpsc::UnboundedSender<Event>,
+        receiver: mpsc::UnboundedReceiver<Event>,
+    ) -> Self {
         let tick_rate = Duration::from_millis(tick_rate);
-        let (sender, receiver) = mpsc::unbounded_channel();
         let _sender = sender.clone();
         let handler = tokio::spawn(async move {
             let mut reader = crossterm::event::EventStream::new();
@@ -86,12 +93,10 @@ impl EventHandler {
     /// This function will always block the current thread if
     /// there is no data available and it's possible for more data to be sent.
     pub async fn next(&mut self) -> AppResult<Event> {
-        self.receiver
-            .recv()
-            .await
-            .ok_or(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "This is an IO error",
-            )))
+        let receiver = &mut self.receiver;
+        receiver.recv().await.ok_or(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "This is an IO error",
+        )))
     }
 }

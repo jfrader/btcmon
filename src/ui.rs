@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, BorderType, Padding, Paragraph},
     Frame,
 };
+use tui_big_text::{BigText, PixelSize};
 use tui_popup::{Popup, SizedWrapper};
 
 fn render_newblock_popup(frame: &mut Frame, height: u64) {
@@ -42,6 +43,11 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         ])
         .split(frame.size());
 
+    let second_pane_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(main_layout[1]);
+
     let status_bar_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![
@@ -50,7 +56,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         ])
         .split(main_layout[2]);
 
-    let status_border_style = get_status_color(&bitcoin_state.status);
+    let status_style = get_status_style(&bitcoin_state.status);
 
     let fee_state = bitcoin_state.fees.clone();
     // fee_state.dedup_by(|a, b| a.fee == b.fee);
@@ -117,22 +123,48 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
                     .title_alignment(Alignment::Center)
                     .border_type(BorderType::Plain),
             )
-            .style(status_border_style),
+            .style(status_style),
         main_layout[0],
     );
 
-    frame.render_widget(
-        Paragraph::new(fees)
-            .block(
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .title("Fees")
-                    .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Plain),
-            )
-            .style(status_border_style),
-        main_layout[1],
-    );
+    let fees_block = Paragraph::new(fees)
+        .block(
+            Block::bordered()
+                .padding(Padding::left(1))
+                .title("Fees")
+                .title_alignment(Alignment::Center)
+                .border_type(BorderType::Plain),
+        )
+        .style(status_style);
+
+    if config.price.enabled {
+        frame.render_widget(fees_block, second_pane_layout[0]);
+
+        let big_text = BigText::builder()
+            .pixel_size(PixelSize::Sextant)
+            .style(status_style)
+            .lines(vec![
+                match app.price_state.last_price_in_currency {
+                    Some(v) => vec![v.to_string(), app.price_state.currency.to_string()].join(" ").into(),
+                    None => "-".into(),
+                },
+            ])
+            .build()
+            .unwrap();
+
+        let price_block = Block::bordered()
+            .padding(Padding::left(1))
+            .title("Coinbase")
+            .title_alignment(Alignment::Center)
+            .border_type(BorderType::Plain)
+            .style(status_style);
+
+        let price_block_area = price_block.inner(second_pane_layout[1]);
+        frame.render_widget(price_block, second_pane_layout[1]);
+        frame.render_widget(big_text, price_block_area);
+    } else {
+        frame.render_widget(fees_block, main_layout[1]);
+    }
 
     if bitcoin_state.status == EBitcoinNodeStatus::Connecting
         || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
@@ -161,7 +193,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     }
 }
 
-fn get_status_color(status: &EBitcoinNodeStatus) -> Style {
+fn get_status_style(status: &EBitcoinNodeStatus) -> Style {
     match status {
         EBitcoinNodeStatus::Online => Style::default().fg(Color::Green).bg(Color::Black),
         EBitcoinNodeStatus::Offline => Style::default().fg(Color::Red).bg(Color::Black),

@@ -1,4 +1,7 @@
-use crate::app::{App, AppResult};
+use crate::{
+    app::{App, AppResult},
+    bitcoin::EBitcoinNodeStatus,
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Handles the key events and updates the state of [`App`].
@@ -21,6 +24,11 @@ pub fn handle_key_events(key_event: KeyEvent, app: &mut App) -> AppResult<()> {
         }
         KeyCode::Left => {
             app.decrement_counter();
+        }
+        KeyCode::Char(' ') => {
+            if app.bitcoin_state.lock().unwrap().status == EBitcoinNodeStatus::Offline {
+                app.init_bitcoin();
+            }
         }
         // Other handlers you could add here.
         _ => {}

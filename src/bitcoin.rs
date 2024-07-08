@@ -39,6 +39,7 @@ pub struct EstimatedFee {
 #[derive(Clone, Debug)]
 pub struct BitcoinState {
     pub status: EBitcoinNodeStatus,
+    pub disconnected_at: Option<Instant>,
     pub current_height: u64,
     pub header_height: u64,
     pub last_hash: String,
@@ -50,6 +51,7 @@ impl Default for BitcoinState {
     fn default() -> Self {
         Self {
             status: EBitcoinNodeStatus::Offline,
+            disconnected_at: None,
             current_height: 0,
             header_height: 0,
             last_hash: String::new(),
@@ -91,6 +93,7 @@ impl BitcoinState {
             }
             Err(e) => {
                 self.set_status(EBitcoinNodeStatus::Offline);
+                self.disconnected_at = Some(Instant::now());
                 Err(e)
             }
         }
@@ -239,13 +242,14 @@ pub fn try_connect_to_node(
     }
 
     match status {
-        EBitcoinNodeStatus::Offline => Some(spawn_connect_to_node(
-            config_provider,
-            app.bitcoin_state.clone(),
-            tracker,
-            token,
-        )),
-        _ => None,
+        EBitcoinNodeStatus::Offline => {
+            {
+                let mut state = app.bitcoin_state.lock().unwrap();
+                state.set_status(EBitcoinNodeStatus::Connecting);
+            }
+            spawn_connect_to_node(config_provider, app.bitcoin_state.clone(), tracker, token);
+        }
+        _ => (),
     };
 }
 
@@ -255,11 +259,6 @@ pub fn spawn_connect_to_node(
     tracker: TaskTracker,
     token: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
-    {
-        let mut state = bitcoin_state.lock().unwrap();
-        state.set_status(EBitcoinNodeStatus::Connecting);
-    }
-
     let subtasks_tracker = tracker.clone();
     let subtasks_token = token.clone();
     tracker.spawn(async move {
