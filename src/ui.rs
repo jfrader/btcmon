@@ -27,6 +27,12 @@ fn render_newblock_popup(frame: &mut Frame, height: u64) {
 
 /// Renders the user interface widgets.
 pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
+    let bitcoin_state_unlocked = app.bitcoin_state.clone();
+    let bitcoin_state_locked = bitcoin_state_unlocked.lock().unwrap();
+    let bitcoin_state = bitcoin_state_locked.clone();
+
+    drop(bitcoin_state_locked);
+
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
@@ -44,8 +50,6 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         ])
         .split(main_layout[2]);
 
-    let bitcoin_state_locked = app.bitcoin_state.clone();
-    let bitcoin_state = bitcoin_state_locked.lock().unwrap();
     let status_border_style = get_status_color(&bitcoin_state.status);
 
     let fee_state = bitcoin_state.fees.clone();
@@ -78,7 +82,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
             Span::styled(
                 bitcoin_state.header_height.to_string(),
                 Style::new().blue().italic(),
-            )
+            ),
         ]),
         _ => Line::from(vec![
             Span::raw("Block Height: "),
@@ -151,7 +155,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     );
 
     if let Some(time) = bitcoin_state.last_hash_time {
-        if time.elapsed().as_secs() < 10 && bitcoin_state.status == EBitcoinNodeStatus::Online {
+        if time.elapsed().as_secs() < 15 && bitcoin_state.status == EBitcoinNodeStatus::Online {
             render_newblock_popup(frame, bitcoin_state.current_height);
         }
     }

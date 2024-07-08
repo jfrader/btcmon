@@ -37,6 +37,10 @@ impl App {
         self.running = false;
     }
 
+    pub fn reset_last_hash_time(&mut self) {
+        self.bitcoin_state.lock().unwrap().last_hash_time = None;
+    }
+
     pub fn increment_counter(&mut self) {
         if let Some(res) = self.counter.checked_add(1) {
             self.counter = res;
