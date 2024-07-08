@@ -1,6 +1,10 @@
-use crate::{app::App, bitcoin::EBitcoinNodeStatus, config::Settings};
+use crate::{
+    app::App,
+    bitcoin::{BitcoinState, EBitcoinNodeStatus},
+    config::Settings,
+};
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Padding, Paragraph},
@@ -9,24 +13,6 @@ use ratatui::{
 use tui_big_text::{BigText, PixelSize};
 use tui_popup::{Popup, SizedWrapper};
 
-fn render_newblock_popup(frame: &mut Frame, height: u64) {
-    let sized_paragraph = SizedWrapper {
-        inner: Paragraph::new(vec![
-            Line::from(""),
-            Line::from(vec![Span::raw("Height")]),
-            Line::from(vec![Span::raw(height.to_string())]),
-            Line::from(""),
-        ])
-        .centered(),
-        width: 21,
-        height: 4,
-    };
-
-    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());
-    frame.render_widget(&popup, frame.size());
-}
-
-/// Renders the user interface widgets.
 pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
     let bitcoin_state_unlocked = app.bitcoin_state.clone();
     let bitcoin_state_locked = bitcoin_state_unlocked.lock().unwrap();
@@ -48,15 +34,9 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         .constraints(vec![Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(main_layout[1]);
 
-    let status_bar_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(vec![
-            Constraint::Length(1),
-            Constraint::Length(frame.size().width - 1),
-        ])
-        .split(main_layout[2]);
-
     let status_style = get_status_style(&bitcoin_state.status);
+
+    render_bitcoin(app, frame, &bitcoin_state, status_style, main_layout[0]);
 
     let fee_state = bitcoin_state.fees.clone();
     // fee_state.dedup_by(|a, b| a.fee == b.fee);
@@ -77,6 +57,86 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
         })
         .collect();
 
+    let fees_block = Paragraph::new(fees)
+        .block(
+            Block::bordered()
+                .padding(Padding::left(1))
+                .title("Fees")
+                .title_alignment(Alignment::Center)
+                .border_type(BorderType::Plain),
+        )
+        .style(status_style);
+
+    if config.price.enabled {
+        render_price(app, frame, status_style, second_pane_layout[1]);
+        frame.render_widget(fees_block, second_pane_layout[0]);
+    } else {
+        frame.render_widget(fees_block, main_layout[1]);
+    }
+
+    render_status_bar(frame, &bitcoin_state, main_layout[2]);
+}
+
+fn render_newblock_popup(frame: &mut Frame, height: u64) {
+    let sized_paragraph = SizedWrapper {
+        inner: Paragraph::new(vec![
+            Line::from(""),
+            Line::from(vec![Span::raw("Height")]),
+            Line::from(vec![Span::raw(height.to_string())]),
+            Line::from(""),
+        ])
+        .centered(),
+        width: 21,
+        height: 4,
+    };
+
+    let popup = Popup::new(" New block! ", sized_paragraph).style(Style::new().white().on_black());
+    frame.render_widget(&popup, frame.size());
+}
+
+fn render_status_bar(frame: &mut Frame, bitcoin_state: &BitcoinState, area: Rect) {
+    let status_bar_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(vec![
+            Constraint::Length(1),
+            Constraint::Length(frame.size().width - 1),
+        ])
+        .split(area);
+
+    if bitcoin_state.status == EBitcoinNodeStatus::Connecting
+        || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
+    {
+        let throbber = throbber_widgets_tui::Throbber::default()
+            .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
+        frame.render_widget(throbber, status_bar_layout[0]);
+    } else {
+        frame.render_widget(
+            Block::new().style(Style::default().fg(Color::White).bg(Color::Black)),
+            status_bar_layout[0],
+        );
+    }
+
+    frame.render_widget(
+        Paragraph::new(format!("Node {}", bitcoin_state.status))
+            .block(Block::new().padding(Padding::left(1)))
+            .style(Style::default().fg(Color::White).bg(Color::Black)),
+        status_bar_layout[1],
+    );
+
+    if let Some(time) = bitcoin_state.last_hash_time {
+        if time.elapsed().as_secs() < 15 && bitcoin_state.status == EBitcoinNodeStatus::Online {
+            render_newblock_popup(frame, bitcoin_state.current_height);
+        }
+    }
+}
+
+fn render_bitcoin(
+    app: &mut App,
+    frame: &mut Frame,
+    bitcoin_state: &BitcoinState,
+    status_style: Style,
+    area: Rect,
+) {
     let block_height = match bitcoin_state.status {
         EBitcoinNodeStatus::Synchronizing => Line::from(vec![
             Span::raw("Block Height: "),
@@ -116,81 +176,54 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
             .block(
                 Block::bordered()
                     .padding(Padding::left(1))
-                    .title(match config.bitcoin_core.host.as_str() {
+                    .title(match app.config.bitcoin_core.host.as_str() {
                         "localhost" => "Bitcoin Core",
-                        _ => config.bitcoin_core.host.as_str(),
+                        _ => app.config.bitcoin_core.host.as_str(),
                     })
                     .title_alignment(Alignment::Center)
                     .border_type(BorderType::Plain),
             )
             .style(status_style),
-        main_layout[0],
+        area,
     );
+}
 
-    let fees_block = Paragraph::new(fees)
-        .block(
-            Block::bordered()
-                .padding(Padding::left(1))
-                .title("Fees")
-                .title_alignment(Alignment::Center)
-                .border_type(BorderType::Plain),
-        )
+fn render_price(app: &mut App, frame: &mut Frame, status_style: Style, area: Rect) {
+    let lines = vec![match app.price_state.last_price_in_currency {
+        Some(v) => vec![v.trunc().to_string(), app.price_state.currency.to_string()]
+            .join(" ")
+            .into(),
+        None => "-".into(),
+    }];
+
+    let price_block = Block::bordered()
+        .padding(Padding::top(1))
+        .title("Price")
+        .title_alignment(Alignment::Center)
+        .border_type(BorderType::Plain)
         .style(status_style);
 
-    if config.price.enabled {
-        frame.render_widget(fees_block, second_pane_layout[0]);
+    let price_block_area = price_block.inner(area);
+    frame.render_widget(price_block, area);
 
-        let big_price = BigText::builder()
-            .alignment(Alignment::Center)
-            .pixel_size(PixelSize::Quadrant)
-            .style(status_style)
-            .lines(vec![match app.price_state.last_price_in_currency {
-                Some(v) => vec![v.trunc().to_string(), app.price_state.currency.to_string()]
-                    .join(" ")
-                    .into(),
-                None => "-".into(),
-            }])
-            .build()
-            .unwrap();
-
-        let price_block = Block::bordered()
-            .padding(Padding::top(1))
-            .title("Price")
-            .title_alignment(Alignment::Center)
-            .border_type(BorderType::Plain)
-            .style(status_style);
-
-        let price_block_area = price_block.inner(second_pane_layout[1]);
-        frame.render_widget(price_block, second_pane_layout[1]);
-        frame.render_widget(big_price, price_block_area);
-    } else {
-        frame.render_widget(fees_block, main_layout[1]);
-    }
-
-    if bitcoin_state.status == EBitcoinNodeStatus::Connecting
-        || bitcoin_state.status == EBitcoinNodeStatus::Synchronizing
-    {
-        let throbber = throbber_widgets_tui::Throbber::default()
-            .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
-        frame.render_widget(throbber, status_bar_layout[0]);
+    if frame.size().width > 65 {
+        frame.render_widget(
+            BigText::builder()
+                .alignment(Alignment::Center)
+                .pixel_size(PixelSize::Quadrant)
+                .style(status_style)
+                .lines(lines)
+                .build()
+                .unwrap(),
+            price_block_area,
+        );
     } else {
         frame.render_widget(
-            Block::new().style(Style::default().fg(Color::White).bg(Color::Black)),
-            status_bar_layout[0],
+            Paragraph::new(lines)
+                .style(Style::default().fg(Color::White))
+                .alignment(Alignment::Center),
+            price_block_area,
         );
-    }
-
-    frame.render_widget(
-        Paragraph::new(format!("Node {}", bitcoin_state.status))
-            .block(Block::new().padding(Padding::left(1)))
-            .style(Style::default().fg(Color::White).bg(Color::Black)),
-        status_bar_layout[1],
-    );
-
-    if let Some(time) = bitcoin_state.last_hash_time {
-        if time.elapsed().as_secs() < 15 && bitcoin_state.status == EBitcoinNodeStatus::Online {
-            render_newblock_popup(frame, bitcoin_state.current_height);
-        }
     }
 }
 
