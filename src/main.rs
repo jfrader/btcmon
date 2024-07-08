@@ -26,14 +26,15 @@ async fn main() -> AppResult<()> {
     let connect_node_token = CancellationToken::new();
     let connect_node_tracker_clone = connect_node_tracker.clone();
 
+    try_connect_to_node(
+        config.clone(),
+        &mut app,
+        connect_node_tracker.clone(),
+        connect_node_token.clone(),
+    );
+
     while app.running {
         tui.draw(&config, &mut app)?;
-        try_connect_to_node(
-            config.clone(),
-            &mut app,
-            connect_node_tracker.clone(),
-            connect_node_token.clone(),
-        );
         match tui.events.next().await? {
             Event::Tick => app.tick(),
             Event::Key(key_event) => handle_key_events(key_event, &mut app)?,
