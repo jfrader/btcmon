@@ -45,7 +45,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
 
     let second_pane_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .constraints(vec![Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(main_layout[1]);
 
     let status_bar_layout = Layout::default()
@@ -142,7 +142,7 @@ pub fn render(config: &Settings, app: &mut App, frame: &mut Frame) {
 
         let big_price = BigText::builder()
             .alignment(Alignment::Center)
-            .pixel_size(PixelSize::Sextant)
+            .pixel_size(PixelSize::Quadrant)
             .style(status_style)
             .lines(vec![match app.price_state.last_price_in_currency {
                 Some(v) => vec![v.trunc().to_string(), app.price_state.currency.to_string()]
