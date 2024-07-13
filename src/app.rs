@@ -1,8 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use std::sync::{Arc, Mutex};
 
 use crate::config::AppConfig;
 use crate::event::Event;
@@ -34,12 +35,12 @@ impl AppThread {
 pub struct AppState {
     pub counter: u8,
     pub price: PriceState,
-    pub node: Option<Arc<Mutex<NodeState>>>
+    pub node: Option<Arc<Mutex<NodeState>>>,
 }
 
 pub struct App {
-    pub provider: Option<Box<dyn NodeProvider + Send>>,
     pub node: Node,
+    pub node_handler: Option<JoinHandle<()>>,
     pub thread: AppThread,
     pub config: AppConfig,
     pub state: AppState,
@@ -47,7 +48,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(thread: AppThread, provider: Box<dyn NodeProvider + Send>) -> Self {
+    pub fn new(thread: AppThread) -> Self {
         let (args, argv) = argmap::parse(env::args());
         let config = AppConfig::new(args, argv).unwrap();
         let cloned_thread = thread.clone();
@@ -56,7 +57,7 @@ impl App {
             config,
             thread,
             node: Node::new(cloned_thread),
-            provider: Some(provider),
+            node_handler: None,
             state: AppState {
                 node: None,
                 counter: 0,
@@ -68,12 +69,15 @@ impl App {
         }
     }
 
-    pub fn init_node(&mut self) {
-        let provider = self.provider.take();
-        if let Some(provider) = provider {
-            self.state.node = Some(provider.get_state().clone());
-            self.node.init(provider);
+    pub fn init_node(&mut self, provider: Box<dyn NodeProvider + Send>) {
+        if let Some(handler) = &self.node_handler {
+            handler.abort();
+            self.thread.token.cancel();
+            self.thread.tracker.close();
         }
+        
+        self.state.node = Some(provider.get_state());
+        self.node_handler = Some(self.node.init(provider));
     }
 
     pub fn init_price(&mut self) {
@@ -83,7 +87,7 @@ impl App {
             self.thread.token.clone(),
         );
     }
-    
+
     pub fn tick(&mut self) {}
 
     pub fn quit(&mut self) {
@@ -123,8 +127,7 @@ impl App {
             KeyCode::Left => {
                 self.decrement_counter();
             }
-            KeyCode::Char(' ') => {
-            }
+            KeyCode::Char(' ') => {}
             _ => {}
         }
         Ok(())
