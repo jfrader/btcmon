@@ -253,7 +253,6 @@ impl NodeProvider for BitcoinCore {
             if let Ok(Some(ref handlers)) = *sub_handlers {
                 let (wait, subscribe) = handlers;
                 if wait.is_finished() || subscribe.is_finished() {
-                    dbg!(1);
                     sub_handlers = Box::new(tokio::select! {
                         res = self.subscribe(thread.clone()) => res,
                         () = thread.token.cancelled() => Ok(None),
