@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::{
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
     time::Instant,
 };
 
@@ -28,7 +28,6 @@ pub enum NodeStatus {
     Offline,
     Synchronizing,
 }
-
 
 impl fmt::Display for NodeStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -55,8 +54,8 @@ impl Default for NodeState {
     fn default() -> Self {
         Self {
             status: NodeStatus::Offline,
-            headers: 0,
             height: 0,
+            headers: 0,
             last_hash: "".to_string(),
             last_hash_instant: None,
         }
@@ -64,8 +63,8 @@ impl Default for NodeState {
 }
 
 impl NodeState {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self::default()))
     }
 }
 
@@ -87,15 +86,6 @@ impl Node {
         Self {
             thread: thread.clone(),
         }
-    }
-
-    pub fn spawn_channel(&mut self) -> mpsc::UnboundedSender<NodeEvent> {
-        let (sender, mut receiver) = mpsc::unbounded_channel::<NodeEvent>();
-        self.thread.tracker.spawn(async move {
-            receiver.recv().await;
-        });
-
-        sender
     }
 }
 
