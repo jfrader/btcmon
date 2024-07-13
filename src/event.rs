@@ -6,37 +6,24 @@ use tokio::sync::mpsc;
 
 use crate::{app::AppResult, price::price::PriceState};
 
-/// Terminal events.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Event {
-    /// Terminal tick.
     Tick,
-    /// Key press.
     Key(KeyEvent),
-    /// Mouse click/scroll.
     Mouse(MouseEvent),
-    /// Terminal resize.
     Resize(u16, u16),
-    /// Reconnect Bitcoin
-    BitcoinCoreLostConnection,
-    /// Update Price
     PriceUpdate(PriceState),
 }
 
-/// Terminal event handler.
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct EventHandler {
-    /// Event sender channel.
     pub sender: mpsc::UnboundedSender<Event>,
-    /// Event receiver channel.
     pub receiver: mpsc::UnboundedReceiver<Event>,
-    /// Event handler thread.
     handler: tokio::task::JoinHandle<()>,
 }
 
 impl EventHandler {
-    /// Constructs a new instance of [`EventHandler`].
     pub fn new(
         tick_rate: u64,
         sender: mpsc::UnboundedSender<Event>,

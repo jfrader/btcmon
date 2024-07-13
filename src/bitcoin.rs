@@ -12,7 +12,7 @@ use tokio::{sync::mpsc, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use zeromq::{Socket, SocketRecv, SubSocket};
 
-use crate::{app::App, config::Settings, event::Event};
+use crate::{app::App, config::AppConfig, event::Event, node::providers::bitcoin_core::BitcoinCore};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BitcoinCoreStatus {
@@ -225,17 +225,17 @@ pub async fn connect_zmq(
 }
 
 pub fn spawn_connect_to_node(
-    app: &mut App,
+    app: &mut App<BitcoinCore>,
     tracker: TaskTracker,
     token: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     {
-        let mut state = app.bitcoin_state.lock().unwrap();
+        let mut state = app.state.bitcoin_state.lock().unwrap();
         state.set_status(BitcoinCoreStatus::Connecting);
     }
     let subtasks_tracker = tracker.clone();
     let subtasks_token = token.clone();
-    let bitcoin_state = app.bitcoin_state.clone();
+    let bitcoin_state = app.state.bitcoin_state.clone();
     let config = app.config.clone();
     tracker.spawn(async move {
         tokio::select! {
@@ -246,7 +246,7 @@ pub fn spawn_connect_to_node(
 }
 
 async fn connect_to_node(
-    config: Settings,
+    config: AppConfig,
     bitcoin_state: Arc<Mutex<BitcoinState>>,
     tracker: TaskTracker,
     token: CancellationToken,
@@ -357,17 +357,24 @@ async fn wait_for_blocks(
         }
 
         if status == BitcoinCoreStatus::Online {
-            let receiver = tokio::select! {
-                receiver = socket.recv() => Some(receiver),
-                () = token.cancelled() => None,
+            let result = tokio::select! {
+                receiver = socket.recv() => receiver,
+                () = token.cancelled() => Err(zeromq::ZmqError::NoMessage),
             };
-            if let Some(receiver) = receiver {
-                let repl: zeromq::ZmqMessage = receiver.unwrap();
-                let hash = hex::encode(repl.get(1).unwrap());
-                let mut state_locked = state.lock().unwrap();
-                if state_locked.status == BitcoinCoreStatus::Online {
-                    state_locked.push_block(hash.to_string(), true);
-                    state_locked.increase_height();
+
+            match result {
+                Ok(repl) => {
+                    let decoded_hash = repl.get(1).unwrap();
+                    let hash = hex::encode(decoded_hash);
+                    let mut state_locked = state.lock().unwrap();
+                    if state_locked.status == BitcoinCoreStatus::Online {
+                        state_locked.push_block(hash.to_string(), true);
+                        state_locked.increase_height();
+                    }
+                }
+                Err(_) => {
+                    let mut state_locked = state.lock().unwrap();
+                    state_locked.zmq_status = ZmqStatus::Offline;
                 }
             }
         } else {
@@ -423,7 +430,7 @@ async fn rpc_checker(
 
                 match res {
                     Err(_) => {
-                        let _ = state.sender.send(Event::BitcoinCoreLostConnection);
+                        let _ = state.sender.send(Event::NodeLostConnection);
                     }
                     Ok(_) => {
                         state.estimate_fees(&rpc);

@@ -1,7 +1,7 @@
-use crate::price::price::{PriceResult, PriceStrategy, PriceTickerPair};
+use crate::price::price::{PriceResult, PriceProvider, PriceTickerPair};
 use async_trait::async_trait;
 use serde::Deserialize;
-pub struct CoinbasePrice;
+pub struct PriceCoinbase;
 
 #[derive(Debug, Deserialize)]
 struct CoinbasePriceResponse {
@@ -9,7 +9,7 @@ struct CoinbasePriceResponse {
 }
 
 #[async_trait]
-impl PriceStrategy for CoinbasePrice {
+impl PriceProvider for PriceCoinbase {
     fn new() -> Self {
         Self::default()
     }
@@ -47,7 +47,7 @@ impl PriceStrategy for CoinbasePrice {
     }
 }
 
-impl Default for CoinbasePrice {
+impl Default for PriceCoinbase {
     fn default() -> Self {
         Self
     }

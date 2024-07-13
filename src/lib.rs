@@ -1,6 +1,7 @@
 /// Application.
 pub mod app;
 
+
 /// Terminal events handler.
 pub mod event;
 
@@ -10,14 +11,14 @@ pub mod ui;
 /// Terminal user interface.
 pub mod tui;
 
-/// Event handler.
-pub mod handler;
-
 /// Bitcoin
-pub mod bitcoin;
+// pub mod bitcoin;
 
 /// Price
 pub mod price;
 
 /// Config
 pub mod config;
+
+/// Node
+pub mod node;

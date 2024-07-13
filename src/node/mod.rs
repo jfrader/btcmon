@@ -1,2 +1,3 @@
-pub mod price;
+pub mod node;
+
 pub mod providers;
