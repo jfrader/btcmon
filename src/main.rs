@@ -20,11 +20,7 @@ async fn main() -> AppResult<()> {
     let sender_clone = sender.clone();
     let thread = AppThread::new(sender_clone);
 
-    let provider: Box<dyn NodeProvider + Send + 'static> = match config.bitcoin_core.host {
-        _ => Box::new(BitcoinCore::new(config_clone))
-    };
-    
-    let mut app = App::new(thread, provider);
+    let mut app = App::new(thread);
 
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
@@ -38,7 +34,11 @@ async fn main() -> AppResult<()> {
     tui.init()?;
     tui.draw(&config, &mut app)?;
 
-    app.init_node();
+    let provider: Box<dyn NodeProvider + Send + 'static> = match config.bitcoin_core.host {
+        _ => Box::new(BitcoinCore::new(config_clone)),
+    };
+
+    app.init_node(provider);
 
     if config.price.enabled {
         app.init_price();
