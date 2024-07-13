@@ -175,8 +175,15 @@ impl BitcoinCore {
                     tx.send(BitcoinCoreEvent::NewBlock(hash.clone()))?;
                     sub = Some(ret_socket);
                 }
-                _ => {
-                    sub = None;
+                Err(e) => {
+                    match e {
+                        Some(ret_socket) => {
+                            sub = Some(ret_socket);
+                        },
+                        _ => {
+                            sub = None;
+                        }
+                    }
                 }
             };
         }
@@ -257,14 +264,6 @@ impl NodeProvider for BitcoinCore {
         )
         .unwrap();
 
-        let state = NodeState {
-            status: NodeStatus::Offline,
-            height: 0,
-            headers: 0,
-            last_hash: "".to_string(),
-            last_hash_instant: None,
-        };
-
         let host = vec![
             "tcp://",
             &config.bitcoin_core.host,
@@ -274,7 +273,7 @@ impl NodeProvider for BitcoinCore {
         .join("");
 
         Self {
-            state: Arc::new(Mutex::new(state)),
+            state: NodeState::new(),
             rpc: Arc::new(rpc),
             sockets: Arc::new(BitcoinCoreSockets {
                 zmq_hashblock: BitcoinCoreSocket {
@@ -296,19 +295,21 @@ impl NodeProvider for BitcoinCore {
         });
 
         loop {
+            if thread.token.is_cancelled() {
+                break;
+            }
+
             if let Ok(Some(ref handlers)) = *sub_handlers {
                 let (wait, subscribe) = handlers;
+                dbg!(0);
                 if wait.is_finished() || subscribe.is_finished() {
+                    dbg!(1);
                     let sockets = self.sockets.clone();
                     sub_handlers = Box::new(tokio::select! {
                         res = self.subscribe(thread.clone(), sockets) => res,
                         () = thread.token.cancelled() => Ok(None),
                     })
                 }
-            }
-
-            if thread.token.is_cancelled() {
-                break;
             }
 
             tokio::select! {

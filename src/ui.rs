@@ -15,7 +15,8 @@ use tui_big_text::{BigText, PixelSize};
 use tui_popup::{Popup, SizedWrapper};
 
 pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
-    let bitcoin_state = state.node.clone().unwrap().lock().unwrap().clone();
+    let unlocked_state = state.node.clone().unwrap_or_default();
+    let locked_state = unlocked_state.lock().unwrap();
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -31,9 +32,9 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         .constraints(vec![Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(main_layout[1]);
 
-    let status_style = get_status_style(&bitcoin_state.status);
+    let status_style = get_status_style(&locked_state.status);
 
-    render_bitcoin(config, frame, &bitcoin_state, status_style, main_layout[0]);
+    render_bitcoin(config, frame, &locked_state, status_style, main_layout[0]);
 
     // let fee_state = bitcoin_state.fees.clone();
     // // fee_state.dedup_by(|a, b| a.fee == b.fee);
@@ -73,7 +74,7 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         frame.render_widget(Block::new(), main_layout[1]);
     }
 
-    render_status_bar(frame, &bitcoin_state, main_layout[2]);
+    render_status_bar(frame, &locked_state, main_layout[2]);
 }
 
 fn render_newblock_popup(frame: &mut Frame, height: u64) {

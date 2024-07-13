@@ -26,8 +26,6 @@ async fn main() -> AppResult<()> {
     
     let mut app = App::new(thread, provider);
 
-    app.init_node();
-
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new(
@@ -35,15 +33,16 @@ async fn main() -> AppResult<()> {
         app.thread.sender.clone(),
         receiver,
     );
-    let mut tui = Tui::new(terminal, events);
 
+    let mut tui = Tui::new(terminal, events);
     tui.init()?;
+    tui.draw(&config, &mut app)?;
+
+    app.init_node();
 
     if config.price.enabled {
         app.init_price();
     }
-
-    app.init_node();
 
     while app.running {
         tui.draw(&config, &mut app)?;
