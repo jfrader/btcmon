@@ -22,7 +22,7 @@ pub struct PriceSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
-pub struct Settings {
+pub struct AppConfig {
     pub tick_rate: String,
     pub price: PriceSettings,
     pub bitcoin_core: BitcoinCoreSettings,
@@ -38,7 +38,7 @@ fn match_string_to_bool(value: &str) -> bool {
     }
 }
 
-impl Settings {
+impl AppConfig {
     pub fn new(_args: List, argv: HashMap<String, Vec<String>>) -> Result<Self, ConfigError> {
         let homedir = home::home_dir().unwrap();
         let home_path = homedir.as_path().to_str();

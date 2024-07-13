@@ -26,7 +26,7 @@ pub struct PriceResult {
 }
 
 #[async_trait]
-pub trait PriceStrategy {
+pub trait PriceProvider {
     fn new() -> Self;
     async fn fetch_current_price(
         &mut self,
@@ -40,18 +40,18 @@ pub struct PriceState {
     pub last_price_in_currency: Option<f64>,
 }
 
-pub struct PriceProvider<TProvider: PriceStrategy> {
+pub struct Price<TProvider: PriceProvider> {
     pub provider: TProvider,
     pub last_price_in_currency: Option<String>,
 }
 
-impl<TProvider: PriceStrategy> PriceProvider<TProvider> {
+impl<TProvider: PriceProvider> Price<TProvider> {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<TProvider: PriceStrategy> Default for PriceProvider<TProvider> {
+impl<TProvider: PriceProvider> Default for Price<TProvider> {
     fn default() -> Self {
         Self {
             provider: TProvider::new(),
@@ -60,7 +60,7 @@ impl<TProvider: PriceStrategy> Default for PriceProvider<TProvider> {
     }
 }
 
-pub fn spawn_price_checker<T: PriceStrategy>(
+pub fn spawn_price_checker<T: PriceProvider>(
     sender: mpsc::UnboundedSender<Event>,
     tracker: TaskTracker,
     token: CancellationToken,
@@ -75,7 +75,7 @@ pub fn spawn_price_checker<T: PriceStrategy>(
     });
 }
 
-async fn price_checker<T: PriceStrategy>(
+async fn price_checker<T: PriceProvider>(
     pair: PriceTickerPair,
     sender: mpsc::UnboundedSender<Event>,
     token: CancellationToken,
