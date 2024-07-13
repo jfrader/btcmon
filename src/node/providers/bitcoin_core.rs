@@ -94,16 +94,18 @@ impl BitcoinCore {
         let (tx, rx) = mpsc::unbounded_channel::<BitcoinCoreEvent>();
         let thread_clone = thread.clone();
 
-        let receive_handler =
-            tokio::task::spawn(
-                async move { BitcoinCore::event_handler(thread_clone, state, rx).await },
-            );
+        let event_handler =
+            thread
+                .tracker
+                .spawn(BitcoinCore::event_handler(thread_clone, state, rx));
 
-        let wait_handler = tokio::task::spawn(async move {
-            BitcoinCore::hashblock_listener(socket, tx, thread.token.clone()).await
-        });
+        let listener_handler = thread.tracker.spawn(BitcoinCore::hashblock_listener(
+            socket,
+            tx,
+            thread.token.clone(),
+        ));
 
-        return Ok((wait_handler, receive_handler));
+        return Ok((listener_handler, event_handler));
     }
 
     fn recv_hashblock(
