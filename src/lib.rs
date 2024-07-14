@@ -11,9 +11,6 @@ pub mod ui;
 /// Terminal user interface.
 pub mod tui;
 
-/// Bitcoin
-// pub mod bitcoin;
-
 /// Price
 pub mod price;
 

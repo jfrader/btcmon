@@ -1,4 +1,4 @@
-use crate::price::price::{PriceResult, PriceProvider, PriceTickerPair};
+use crate::price::{PriceCurrency, PriceProvider, PriceResult};
 use async_trait::async_trait;
 use serde::Deserialize;
 pub struct PriceCoinbase;
@@ -16,7 +16,7 @@ impl PriceProvider for PriceCoinbase {
 
     async fn fetch_current_price(
         &mut self,
-        _pair: &PriceTickerPair,
+        currency: &PriceCurrency,
     ) -> Result<PriceResult, Box<dyn std::error::Error>> {
         let client = reqwest::Client::builder().build().unwrap();
 
@@ -24,7 +24,13 @@ impl PriceProvider for PriceCoinbase {
         headers.insert("Content-Type", "application/json".parse().unwrap());
 
         let request = client
-            .get("https://api.coinbase.com/api/v3/brokerage/market/products/BTC-USD")
+            .get(
+                vec![
+                    "https://api.coinbase.com/api/v3/brokerage/market/products/BTC",
+                    &currency.to_string(),
+                ]
+                .join("-"),
+            )
             .headers(headers)
             .send()
             .await;

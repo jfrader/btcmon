@@ -1,22 +1,28 @@
 use crate::{
     app::AppState,
     config::AppConfig,
-    node::node::{NodeState, NodeStatus},
-    price::price::PriceState,
+    node::{NodeState, NodeStatus},
 };
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Padding, Paragraph},
+    widgets::{Block, Padding, Paragraph},
     Frame,
 };
-use tui_big_text::{BigText, PixelSize};
 use tui_popup::{Popup, SizedWrapper};
 
+pub mod node;
+pub mod price;
+
+pub trait Draw {
+    fn draw(&self, frame: &mut Frame, area: Rect, style: Option<Style>);
+}
+
 pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
-    let unlocked_state = state.node.clone().unwrap_or_default();
-    let locked_state = unlocked_state.lock().unwrap();
+    let node_state = state.node.clone().unwrap_or_default();
+    let node = node_state.lock().unwrap();
+    let status_style = get_status_style(&node.status);
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -27,14 +33,18 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         ])
         .split(frame.size());
 
-    let second_pane_layout = Layout::default()
+    let top_panel = &main_layout[0];
+
+    let bottom_panel = &main_layout[1];
+    let bottom_panel_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(vec![Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(main_layout[1]);
+        .split(*bottom_panel);
 
-    let status_style = get_status_style(&locked_state.status);
+    let bottom_panel_left = &bottom_panel_layout[0];
+    let bottom_panel_right = &bottom_panel_layout[1];
 
-    render_bitcoin(config, frame, &locked_state, status_style, main_layout[0]);
+    let status_panel = &main_layout[2];
 
     // let fee_state = bitcoin_state.fees.clone();
     // // fee_state.dedup_by(|a, b| a.fee == b.fee);
@@ -66,15 +76,18 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
     //     .style(status_style);
 
     if config.price.enabled {
-        render_price(state.price, frame, status_style, second_pane_layout[1]);
-        // frame.render_widget(fees_block, second_pane_layout[0]);
-        frame.render_widget(Block::new(), second_pane_layout[0]);
+        state
+            .price
+            .draw(frame, *bottom_panel_right, Some(status_style));
+        frame.render_widget(Block::new(), *bottom_panel_left);
     } else {
         // frame.render_widget(fees_block, main_layout[1]);
-        frame.render_widget(Block::new(), main_layout[1]);
+        state.price.draw(frame, *bottom_panel, Some(status_style));
     }
 
-    render_status_bar(frame, &locked_state, main_layout[2]);
+    node.draw(frame, *top_panel, Some(status_style));
+
+    render_status_bar(frame, &node, *status_panel);
 }
 
 fn render_newblock_popup(frame: &mut Frame, height: u64) {
@@ -137,104 +150,7 @@ fn render_status_bar(frame: &mut Frame, bitcoin_state: &NodeState, area: Rect) {
     }
 }
 
-fn render_bitcoin(
-    config: &AppConfig,
-    frame: &mut Frame,
-    bitcoin_state: &NodeState,
-    status_style: Style,
-    area: Rect,
-) {
-    let block_height = match bitcoin_state.status {
-        NodeStatus::Synchronizing => Line::from(vec![
-            Span::raw("Block Height: "),
-            Span::styled(
-                bitcoin_state.height.to_string(),
-                Style::new().fg(Color::White).italic(),
-            ),
-            Span::raw("/"),
-            Span::styled(
-                bitcoin_state.headers.to_string(),
-                Style::new().fg(Color::Blue).italic(),
-            ),
-        ]),
-        _ => Line::from(vec![
-            Span::raw("Block Height: "),
-            Span::styled(
-                bitcoin_state.height.to_string(),
-                Style::new().fg(Color::White).italic(),
-            ),
-        ]),
-    };
-
-    let text: Vec<Line> = vec![
-        block_height,
-        Line::from(vec![
-            Span::raw("Last Block: "),
-            Span::styled(
-                bitcoin_state.last_hash.clone(),
-                Style::new().fg(Color::White).italic(),
-            ),
-        ]),
-        "------".into(),
-    ];
-
-    frame.render_widget(
-        Paragraph::new(text)
-            .block(
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .title(match config.bitcoin_core.host.as_str() {
-                        "localhost" => "Bitcoin Core",
-                        _ => config.bitcoin_core.host.as_str(),
-                    })
-                    .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Plain),
-            )
-            .style(status_style),
-        area,
-    );
-}
-
-fn render_price(state: PriceState, frame: &mut Frame, status_style: Style, area: Rect) {
-    let lines = vec![match state.last_price_in_currency {
-        Some(v) => vec![v.trunc().to_string(), state.currency.to_string()]
-            .join(" ")
-            .into(),
-        None => "-".into(),
-    }];
-
-    let price_block = Block::bordered()
-        .padding(Padding::top(1))
-        .title("Price")
-        .title_alignment(Alignment::Center)
-        .border_type(BorderType::Plain)
-        .style(status_style);
-
-    let price_block_area = price_block.inner(area);
-    frame.render_widget(price_block, area);
-
-    if frame.size().width > 65 {
-        frame.render_widget(
-            BigText::builder()
-                .alignment(Alignment::Center)
-                .pixel_size(PixelSize::Quadrant)
-                .style(status_style)
-                .lines(lines)
-                .build()
-                .unwrap(),
-            price_block_area,
-        );
-    } else {
-        frame.render_widget(
-            Paragraph::new(lines)
-                .style(Style::default().fg(Color::White))
-                .alignment(Alignment::Center),
-            price_block_area,
-        );
-    }
-}
-
-fn get_status_style(status: &NodeStatus) -> Style {
+pub fn get_status_style(status: &NodeStatus) -> Style {
     match status {
         NodeStatus::Online => Style::default().fg(Color::Green).bg(Color::Black),
         NodeStatus::Offline => Style::default().fg(Color::Red).bg(Color::Black),

@@ -10,7 +10,7 @@ use zmq::PollEvents;
 use crate::{
     app::AppThread,
     config::AppConfig,
-    node::node::{NodeProvider, NodeState, NodeStatus},
+    node::{NodeProvider, NodeState, NodeStatus},
 };
 
 enum BitcoinCoreEvent {
