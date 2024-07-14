@@ -1,7 +1,7 @@
 use btcmon::app::{App, AppResult, AppThread};
 use btcmon::config;
 use btcmon::event::{Event, EventHandler};
-use btcmon::node::node::NodeProvider;
+use btcmon::node::NodeProvider;
 use btcmon::node::providers::bitcoin_core::BitcoinCore;
 use btcmon::tui::Tui;
 use ratatui::backend::CrosstermBackend;

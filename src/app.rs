@@ -4,13 +4,14 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use std::str::FromStr;
+use std::{env, error};
 
 use crate::config::AppConfig;
 use crate::event::Event;
-use crate::node::node::{Node, NodeProvider, NodeState};
-use crate::price::price::{spawn_price_checker, PriceCurrency, PriceState};
+use crate::node::{Node, NodeProvider, NodeState};
 use crate::price::providers::coinbase::PriceCoinbase;
-use std::{env, error};
+use crate::price::{spawn_price_checker, PriceCurrency, PriceState};
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -59,12 +60,9 @@ impl App {
             node: Node::new(cloned_thread),
             node_handler: None,
             state: AppState {
-                node: None,
                 counter: 0,
-                price: PriceState {
-                    currency: PriceCurrency::USD,
-                    last_price_in_currency: None,
-                },
+                price: PriceState::new(),
+                node: Some(NodeState::new()),
             },
         }
     }
@@ -75,16 +73,15 @@ impl App {
             self.thread.token.cancel();
             self.thread.tracker.close();
         }
-        
+
         self.state.node = Some(provider.get_state());
         self.node_handler = Some(self.node.init(provider));
     }
 
     pub fn init_price(&mut self) {
         spawn_price_checker::<PriceCoinbase>(
-            self.thread.sender.clone(),
-            self.thread.tracker.clone(),
-            self.thread.token.clone(),
+            self.thread.clone(),
+            PriceCurrency::from_str(&self.config.price.currency).unwrap(),
         );
     }
 
