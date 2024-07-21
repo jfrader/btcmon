@@ -13,7 +13,6 @@ use tokio::sync::mpsc;
 async fn main() -> AppResult<()> {
     let (args, argv) = argmap::parse(env::args());
     let config = config::AppConfig::new(args, argv).unwrap();
-    let config_clone = config.clone();
 
     let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -35,7 +34,7 @@ async fn main() -> AppResult<()> {
     tui.draw(&config, &mut app)?;
 
     let provider: Box<dyn NodeProvider + Send + 'static> = match config.bitcoin_core.host {
-        _ => Box::new(BitcoinCore::new(config_clone)),
+        _ => Box::new(BitcoinCore::new(&config)),
     };
 
     app.init_node(provider);

@@ -5,7 +5,7 @@ host = "127.0.0.1"
 rpc_port = 18443
 rpc_user = "polaruser"
 rpc_password = "polarpass"
-zmq_hashblock_port = 28334
+zmq_port = 28334
 
 [price]
 enabled = true

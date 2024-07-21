@@ -10,7 +10,7 @@ pub struct BitcoinCoreSettings {
     pub rpc_port: String,
     pub rpc_user: String,
     pub rpc_password: String,
-    pub zmq_hashblock_port: String,
+    pub zmq_port: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -51,7 +51,7 @@ impl AppConfig {
             .set_default("bitcoin_core.rpc_port", 8332)?
             .set_default("bitcoin_core.rpc_user", "username")?
             .set_default("bitcoin_core.rpc_password", "password")?
-            .set_default("bitcoin_core.zmq_hashblock_port", 28332)?
+            .set_default("bitcoin_core.zmq_port", 28332)?
             // price
             .set_default("price.enabled", true)?
             .set_default("price.currency", "USD")?;

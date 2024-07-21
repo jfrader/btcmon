@@ -36,13 +36,13 @@ impl PriceProvider for PriceCoinbase {
             .await;
 
         if let Err(e) = request {
-            return Err(Box::new(e));
+            return Err(e.into());
         }
 
         let json = request.unwrap().json::<CoinbasePriceResponse>().await;
 
         if let Err(e) = json {
-            return Err(Box::new(e));
+            return Err(e.into());
         }
 
         let body = json.unwrap();

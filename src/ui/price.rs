@@ -17,7 +17,7 @@ impl Draw for PriceState {
             Some(v) => vec![v.trunc().to_string(), self.currency.to_string()]
                 .join(" ")
                 .into(),
-            None => "-".into(),
+            None => "...".into(),
         }];
 
         let price_block = Block::bordered()
@@ -30,11 +30,11 @@ impl Draw for PriceState {
         let price_block_area = price_block.inner(area);
         frame.render_widget(price_block, area);
 
-        if frame.size().width > 65 {
+        if frame.size().width > 70 {
             frame.render_widget(
                 BigText::builder()
                     .alignment(Alignment::Center)
-                    .pixel_size(PixelSize::Quadrant)
+                    .pixel_size(PixelSize::Sextant)
                     .style(style)
                     .lines(lines)
                     .build()
