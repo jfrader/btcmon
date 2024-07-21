@@ -42,7 +42,7 @@ pub trait PriceProvider {
     fn new() -> Self;
     async fn fetch_current_price(
         &mut self,
-        pair: &PriceCurrency,
+        currency: &PriceCurrency,
     ) -> Result<PriceResult, Box<dyn std::error::Error>>;
 }
 

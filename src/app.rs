@@ -1,11 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::{env, error};
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use std::str::FromStr;
-use std::{env, error};
 
 use crate::config::AppConfig;
 use crate::event::Event;
@@ -41,7 +40,6 @@ pub struct AppState {
 
 pub struct App {
     pub node: Node,
-    pub node_handler: Option<JoinHandle<()>>,
     pub thread: AppThread,
     pub config: AppConfig,
     pub state: AppState,
@@ -58,7 +56,6 @@ impl App {
             config,
             thread,
             node: Node::new(cloned_thread),
-            node_handler: None,
             state: AppState {
                 counter: 0,
                 price: PriceState::new(),
@@ -68,14 +65,8 @@ impl App {
     }
 
     pub fn init_node(&mut self, provider: Box<dyn NodeProvider + Send>) {
-        if let Some(handler) = &self.node_handler {
-            handler.abort();
-            self.thread.token.cancel();
-            self.thread.tracker.close();
-        }
-
         self.state.node = Some(provider.get_state());
-        self.node_handler = Some(self.node.init(provider));
+        self.node.init(provider);
     }
 
     pub fn init_price(&mut self) {

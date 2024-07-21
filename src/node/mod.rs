@@ -4,6 +4,7 @@ use crate::{app::AppThread, config::AppConfig};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::{
+    collections::HashMap,
     fmt,
     marker::Sized,
     sync::{Arc, Mutex},
@@ -50,6 +51,7 @@ pub struct NodeState {
     pub headers: u64,
     pub last_hash: String,
     pub last_hash_instant: Option<Instant>,
+    pub services: HashMap<String, NodeStatus>,
 }
 
 impl Default for NodeState {
@@ -60,6 +62,7 @@ impl Default for NodeState {
             headers: 0,
             last_hash: "".to_string(),
             last_hash_instant: None,
+            services: HashMap::new(),
         }
     }
 }
@@ -72,7 +75,7 @@ impl NodeState {
 
 #[async_trait]
 pub trait NodeProvider {
-    fn new(config: AppConfig) -> Self
+    fn new(config: &AppConfig) -> Self
     where
         Self: Sized;
     async fn init(&mut self, thread: AppThread) -> Result<()>;
@@ -81,28 +84,31 @@ pub trait NodeProvider {
 
 pub struct Node {
     pub thread: AppThread,
+    handler: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Node {
     pub fn new(thread: AppThread) -> Self {
         Self {
             thread: thread.clone(),
+            handler: None,
         }
     }
 }
 
 impl Node {
-    pub fn init(
-        &mut self,
-        mut provider: Box<dyn NodeProvider + Send + 'static>,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn init(&mut self, mut provider: Box<dyn NodeProvider + Send + 'static>) {
+        if let Some(handler) = &self.handler {
+            handler.abort();
+        }
+
         let token = self.thread.token.clone();
         let thread = self.thread.clone();
-        self.thread.tracker.spawn(async move {
+        self.handler = Some(self.thread.tracker.spawn(async move {
             tokio::select! {
                 _ = provider.init(thread) => {},
                 () = token.cancelled() => {},
-            };
-        })
+            }
+        }));
     }
 }

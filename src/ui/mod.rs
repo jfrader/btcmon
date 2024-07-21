@@ -1,22 +1,20 @@
-use crate::{
-    app::AppState,
-    config::AppConfig,
-    node::{NodeState, NodeStatus},
-};
+use crate::{app::AppState, config::AppConfig, node::NodeStatus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::{Line, Span},
-    widgets::{Block, Padding, Paragraph},
+    widgets::Block,
     Frame,
 };
-use tui_popup::{Popup, SizedWrapper};
 
 pub mod node;
 pub mod price;
 
 pub trait Draw {
     fn draw(&self, frame: &mut Frame, area: Rect, style: Option<Style>);
+}
+
+pub trait DrawStatus {
+    fn draw_status(&self, frame: &mut Frame, area: Rect);
 }
 
 pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
@@ -38,7 +36,7 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
     let bottom_panel = &main_layout[1];
     let bottom_panel_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(35), Constraint::Percentage(65)])
+        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(*bottom_panel);
 
     let bottom_panel_left = &bottom_panel_layout[0];
@@ -87,67 +85,7 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
 
     node.draw(frame, *top_panel, Some(status_style));
 
-    render_status_bar(frame, &node, *status_panel);
-}
-
-fn render_newblock_popup(frame: &mut Frame, height: u64) {
-    let sized_paragraph = SizedWrapper {
-        inner: Paragraph::new(vec![
-            Line::from(""),
-            Line::from(vec![Span::raw("Height")]),
-            Line::from(vec![Span::raw(height.to_string())]),
-            Line::from(""),
-        ])
-        .centered(),
-        width: 21,
-        height: 4,
-    };
-
-    let popup = Popup::new(" New block! ", sized_paragraph)
-        .style(Style::new().fg(Color::White).bg(Color::Black));
-    frame.render_widget(&popup, frame.size());
-}
-
-fn render_status_bar(frame: &mut Frame, bitcoin_state: &NodeState, area: Rect) {
-    let zmq_status_width = 12;
-    let status_bar_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(vec![
-            Constraint::Length(1),
-            Constraint::Length(frame.size().width - zmq_status_width - 1),
-            Constraint::Length(zmq_status_width),
-        ])
-        .split(area);
-
-    if bitcoin_state.status == NodeStatus::Synchronizing {
-        let throbber = throbber_widgets_tui::Throbber::default()
-            .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
-        frame.render_widget(throbber, status_bar_layout[0]);
-    } else {
-        frame.render_widget(
-            Block::new().style(Style::default().fg(Color::White).bg(Color::Black)),
-            status_bar_layout[0],
-        );
-    }
-
-    // frame.render_widget(
-    //     Paragraph::new(format!("ZMQ {} ", bitcoin_state.zmq_status))
-    //         .style(Style::default().fg(Color::White).bg(Color::Black)),
-    //     status_bar_layout[2],
-    // );
-
-    frame.render_widget(
-        Paragraph::new(format!("Node {}", bitcoin_state.status))
-            .block(Block::new().padding(Padding::left(1)))
-            .style(Style::default().fg(Color::White).bg(Color::Black)),
-        status_bar_layout[1],
-    );
-
-    if let Some(time) = bitcoin_state.last_hash_instant {
-        if time.elapsed().as_secs() < 15 && bitcoin_state.status == NodeStatus::Online {
-            render_newblock_popup(frame, bitcoin_state.height);
-        }
-    }
+    node.draw_status(frame, *status_panel);
 }
 
 pub fn get_status_style(status: &NodeStatus) -> Style {
