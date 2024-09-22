@@ -229,7 +229,7 @@ impl NodeProvider for BitcoinCore {
                 Some(Err(_)) => {
                     sub_handlers = Box::new(self.try_subscribe(&thread).await);
                 }
-                None => {}
+                _ => {}
             }
 
             let _ = self.get_blockchain_info().await;

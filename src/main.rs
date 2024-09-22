@@ -51,6 +51,7 @@ async fn main() -> AppResult<()> {
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
             Event::PriceUpdate(state) => app.handle_price_update(state),
+            Event::FeeUpdate(state) => app.handle_fee_update(state),
         }
     }
 

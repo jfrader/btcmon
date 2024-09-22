@@ -2,10 +2,10 @@ use crate::{app::AppState, config::AppConfig, node::NodeStatus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    widgets::Block,
     Frame,
 };
 
+pub mod fees;
 pub mod node;
 pub mod price;
 
@@ -44,44 +44,17 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
 
     let status_panel = &main_layout[2];
 
-    // let fee_state = bitcoin_state.fees.clone();
-    // // fee_state.dedup_by(|a, b| a.fee == b.fee);
-
-    // let fees: Vec<Line> = fee_state
-    //     .iter()
-    //     .map(|estimation| {
-    //         let fee: f64 = estimation.fee.to_float_in(bitcoin::Denomination::SAT);
-    //         Line::from(vec![
-    //             Span::raw(estimation.received_target.to_string()),
-    //             Span::raw(" blocks: "),
-    //             Span::styled(
-    //                 ((4.0 / 3000.0) * fee).trunc().to_string(),
-    //                 Style::new().white().italic(),
-    //             ),
-    //             Span::styled(" sats/vbyte ", Style::new().white().italic()),
-    //         ])
-    //     })
-    //     .collect();
-
-    // let fees_block = Paragraph::new(fees)
-    //     .block(
-    //         Block::bordered()
-    //             .padding(Padding::left(1))
-    //             .title("Fees")
-    //             .title_alignment(Alignment::Center)
-    //             .border_type(BorderType::Plain),
-    //     )
-    //     .style(status_style);
-
     if config.price.enabled {
         state
             .price
             .draw(frame, *bottom_panel_right, Some(status_style));
-        frame.render_widget(Block::new(), *bottom_panel_left);
     } else {
-        // frame.render_widget(fees_block, main_layout[1]);
         state.price.draw(frame, *bottom_panel, Some(status_style));
     }
+
+    state
+        .fees
+        .draw(frame, *bottom_panel_left, Some(status_style));
 
     node.draw(frame, *top_panel, Some(status_style));
 

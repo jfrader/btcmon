@@ -4,7 +4,7 @@ use crossterm::event::{Event as CrosstermEvent, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::{app::AppResult, price::PriceState};
+use crate::{app::AppResult, fees::FeesState, price::PriceState};
 
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -13,6 +13,7 @@ pub enum Event {
     Mouse(MouseEvent),
     Resize(u16, u16),
     PriceUpdate(PriceState),
+    FeeUpdate(FeesState),
 }
 
 #[allow(dead_code)]
