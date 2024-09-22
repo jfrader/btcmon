@@ -1,7 +1,6 @@
 /// Application.
 pub mod app;
 
-
 /// Terminal events handler.
 pub mod event;
 
@@ -19,3 +18,6 @@ pub mod config;
 
 /// Node
 pub mod node;
+
+/// Fees
+pub mod fees;

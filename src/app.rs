@@ -8,6 +8,8 @@ use tokio_util::task::TaskTracker;
 
 use crate::config::AppConfig;
 use crate::event::Event;
+use crate::fees::providers::FeesBlockchainInfo;
+use crate::fees::{spawn_fees_checker, FeesState};
 use crate::node::{Node, NodeProvider, NodeState};
 use crate::price::providers::coinbase::PriceCoinbase;
 use crate::price::{spawn_price_checker, PriceCurrency, PriceState};
@@ -35,6 +37,7 @@ impl AppThread {
 pub struct AppState {
     pub counter: u8,
     pub price: PriceState,
+    pub fees: FeesState,
     pub node: Option<Arc<Mutex<NodeState>>>,
 }
 
@@ -59,6 +62,7 @@ impl App {
             state: AppState {
                 counter: 0,
                 price: PriceState::new(),
+                fees: FeesState::new(),
                 node: Some(NodeState::new()),
             },
         }
@@ -74,6 +78,8 @@ impl App {
             self.thread.clone(),
             PriceCurrency::from_str(&self.config.price.currency).unwrap(),
         );
+
+        spawn_fees_checker::<FeesBlockchainInfo>(self.thread.clone());
     }
 
     pub fn tick(&mut self) {}
@@ -96,6 +102,10 @@ impl App {
 
     pub fn handle_price_update(&mut self, state: PriceState) {
         self.state.price = state;
+    }
+
+    pub fn handle_fee_update(&mut self, state: FeesState) {
+        self.state.fees = state;
     }
 
     pub fn handle_key_events(&mut self, key_event: KeyEvent) -> AppResult<()> {

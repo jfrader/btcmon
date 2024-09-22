@@ -94,9 +94,7 @@ impl Node {
             handler: None,
         }
     }
-}
 
-impl Node {
     pub fn init(&mut self, mut provider: Box<dyn NodeProvider + Send + 'static>) {
         if let Some(handler) = &self.handler {
             handler.abort();
