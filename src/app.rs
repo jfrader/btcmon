@@ -78,7 +78,9 @@ impl App {
             self.thread.clone(),
             PriceCurrency::from_str(&self.config.price.currency).unwrap(),
         );
+    }
 
+    pub fn init_fees(&mut self) {
         spawn_fees_checker::<FeesBlockchainInfo>(self.thread.clone());
     }
 

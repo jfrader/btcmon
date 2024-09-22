@@ -18,14 +18,16 @@ impl Draw for FeesState {
         let fee_state = self.result.clone();
         // fee_state.dedup_by(|a, b| a.fee == b.fee);
 
-        let fees: Vec<Line> = vec![
-            Line::from(Span::raw("Priority")),
-            get_fee_line("Low", &fee_state.low),
-            get_fee_line("Normal", &fee_state.medium),
-            get_fee_line("High", &fee_state.high),
+        let fees: Vec<Option<Line>> = vec![
+            Some(Line::from(Span::raw("Priority"))),
+            get_fee_line("Low", fee_state.low),
+            get_fee_line("Normal", fee_state.medium),
+            get_fee_line("High", fee_state.high),
         ];
+        
+        let filtered_fees: Vec<Line> = fees.into_iter().filter_map(|opt| opt).collect();
 
-        let fees_block = Paragraph::new(fees)
+        let fees_block = Paragraph::new(filtered_fees)
             .block(
                 Block::bordered()
                     .padding(Padding::left(1))
@@ -39,11 +41,15 @@ impl Draw for FeesState {
     }
 }
 
-fn get_fee_line<'a>(name: &'a str, value: &'a str) -> Line<'a> {
-    Line::from(vec![
-        Span::raw(name),
-        Span::raw(": "),
-        Span::styled(value, Style::new().white().italic()),
-        Span::styled(" Sats/vbyte ", Style::new().white().italic()),
-    ])
+fn get_fee_line<'a>(name: &'a str, value: Option<String>) -> Option<Line<'a>> {
+    if let Some(res) = value {
+        return Some(Line::from(vec![
+            Span::raw(name),
+            Span::raw(": "),
+            Span::styled(res, Style::new().white().italic()),
+            Span::styled(" Sats/vbyte ", Style::new().white().italic()),
+        ]));
+    }
+
+    None
 }

@@ -6,13 +6,13 @@ pub struct FeesBlockchainInfo;
 
 #[derive(Debug, Deserialize)]
 struct BlockchainInfoResponseLimits {
-    min: u32,
+    // min: u32,
     // max: u32,
 }
 
 #[derive(Debug, Deserialize)]
 struct BlockchainInfoResponse {
-    limits: BlockchainInfoResponseLimits,
+    // limits: BlockchainInfoResponseLimits,
     regular: u32,
     priority: u32,
 }
@@ -48,9 +48,9 @@ impl FeeServiceProvider for FeesBlockchainInfo {
         let body = json.unwrap();
 
         Ok(FeeResult {
-            high: format!("{}", body.priority),
-            medium: format!("{}", body.regular),
-            low: format!("{}", body.limits.min),
+            high: Some(format!("{}", body.priority)),
+            medium: Some(format!("{}", body.regular)),
+            low: None,
         })
     }
 }
