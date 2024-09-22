@@ -9,9 +9,9 @@ pub mod providers;
 
 #[derive(Debug, Clone)]
 pub struct FeeResult {
-    pub low: String,
-    pub medium: String,
-    pub high: String,
+    pub low: Option<String>,
+    pub medium: Option<String>,
+    pub high: Option<String>,
 }
 
 #[async_trait]
@@ -29,9 +29,9 @@ impl Default for FeesState {
     fn default() -> Self {
         Self {
             result: FeeResult {
-                low: "-".to_string(),
-                medium: "-".to_string(),
-                high: "-".to_string(),
+                low: None,
+                medium: None,
+                high: None,
             },
         }
     }

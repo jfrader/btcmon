@@ -1,8 +1,8 @@
 use btcmon::app::{App, AppResult, AppThread};
 use btcmon::config;
 use btcmon::event::{Event, EventHandler};
-use btcmon::node::NodeProvider;
 use btcmon::node::providers::bitcoin_core::BitcoinCore;
+use btcmon::node::NodeProvider;
 use btcmon::tui::Tui;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -41,6 +41,10 @@ async fn main() -> AppResult<()> {
 
     if config.price.enabled {
         app.init_price();
+    }
+
+    if config.fees.enabled {
+        app.init_fees();
     }
 
     while app.running {

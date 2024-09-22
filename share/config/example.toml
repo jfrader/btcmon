@@ -10,3 +10,6 @@ zmq_port = 28334
 [price]
 enabled = true
 currency = "USD"
+
+[fees]
+enabled = true

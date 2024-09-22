@@ -22,9 +22,16 @@ pub struct PriceSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct FeesSettings {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct AppConfig {
     pub tick_rate: String,
     pub price: PriceSettings,
+    pub fees: FeesSettings,
     pub bitcoin_core: BitcoinCoreSettings,
 }
 
@@ -54,7 +61,9 @@ impl AppConfig {
             .set_default("bitcoin_core.zmq_port", 28332)?
             // price
             .set_default("price.enabled", true)?
-            .set_default("price.currency", "USD")?;
+            .set_default("price.currency", "USD")?
+            // fees
+            .set_default("fees.enabled", true)?;
 
         let mut default_config_file: String = String::from("/etc/btcmon/btcmon.toml");
 
@@ -86,6 +95,9 @@ impl AppConfig {
             {
                 match key.as_str() {
                     "price.enabled" => {
+                        s = s.set_override(key, match_string_to_bool(value))?;
+                    }
+                    "fees.enabled" => {
                         s = s.set_override(key, match_string_to_bool(value))?;
                     }
                     _ => {

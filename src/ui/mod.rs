@@ -22,14 +22,32 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
     let node = node_state.lock().unwrap();
     let status_style = get_status_style(&node.status);
 
+    let (layout_constraints, status_panel_i): (Vec<Constraint>, usize) =
+        if config.price.enabled | config.fees.enabled {
+            (
+                vec![
+                    Constraint::Length(frame.size().height / 2),
+                    Constraint::Length(frame.size().height / 2 - 1),
+                    Constraint::Max(1),
+                ],
+                2,
+            )
+        } else {
+            (
+                vec![
+                    Constraint::Length(frame.size().height - 1),
+                    Constraint::Max(1),
+                ],
+                1,
+            )
+        };
+
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![
-            Constraint::Length(frame.size().height / 2),
-            Constraint::Length(frame.size().height / 2 - 1),
-            Constraint::Max(1),
-        ])
+        .constraints(layout_constraints)
         .split(frame.size());
+
+    let status_panel = &main_layout[status_panel_i];
 
     let top_panel = &main_layout[0];
 
@@ -39,25 +57,29 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(*bottom_panel);
 
-    let bottom_panel_left = &bottom_panel_layout[0];
-    let bottom_panel_right = &bottom_panel_layout[1];
+    match (config.price.enabled, config.fees.enabled) {
+        (true, true) => {
+            let bottom_panel_left = &bottom_panel_layout[0];
+            let bottom_panel_right = &bottom_panel_layout[1];
 
-    let status_panel = &main_layout[2];
+            state
+                .price
+                .draw(frame, *bottom_panel_right, Some(status_style));
 
-    if config.price.enabled {
-        state
-            .price
-            .draw(frame, *bottom_panel_right, Some(status_style));
-    } else {
-        state.price.draw(frame, *bottom_panel, Some(status_style));
+            state
+                .fees
+                .draw(frame, *bottom_panel_left, Some(status_style));
+        }
+        (true, false) => {
+            state.price.draw(frame, *bottom_panel, Some(status_style));
+        }
+        (false, true) => {
+            state.fees.draw(frame, *bottom_panel, Some(status_style));
+        }
+        _ => {}
     }
 
-    state
-        .fees
-        .draw(frame, *bottom_panel_left, Some(status_style));
-
     node.draw(frame, *top_panel, Some(status_style));
-
     node.draw_status(frame, *status_panel);
 }
 
