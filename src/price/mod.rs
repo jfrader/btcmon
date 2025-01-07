@@ -119,7 +119,10 @@ async fn price_checker<T: PriceProvider>(
                         currency,
                         last_price_in_currency: Some(res.price_in_currency.parse::<f64>().unwrap()),
                     })),
-                    Err(_) => Ok(()),
+                    Err(_) => sender.send(Event::PriceUpdate(PriceState {
+                        currency,
+                        last_price_in_currency: None,
+                    })),
                 };
 
             }
