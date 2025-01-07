@@ -14,12 +14,6 @@ use tokio::{
     time::Instant,
 };
 
-pub enum NodeKind {
-    BitcoinCore,
-    CLightning,
-    LND,
-}
-
 pub struct NodeChannel<E> {
     pub sender: UnboundedSender<E>,
     pub receiver: Arc<Mutex<UnboundedReceiver<E>>>,
