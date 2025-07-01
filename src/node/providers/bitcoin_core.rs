@@ -247,6 +247,9 @@ impl NodeProvider for BitcoinCore {
         {
             let mut locked_state = state.lock().unwrap();
 
+            locked_state.title = "Bitcoin Core".to_string();
+            locked_state.host = config.bitcoin_core.host.to_string();
+
             locked_state
                 .services
                 .insert("RPC".to_string(), NodeStatus::Offline);

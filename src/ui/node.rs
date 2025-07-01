@@ -65,7 +65,7 @@ impl DrawStatus for NodeState {
         };
 
         frame.render_widget(
-            Paragraph::new(format!("Node {} {}", self.status, message))
+            Paragraph::new(format!("Node {} | {} {}", self.status, self.host, message))
                 .block(Block::new().padding(Padding::left(1)))
                 .style(Style::default().fg(Color::White).bg(Color::Black)),
             status_bar_layout[1],
@@ -151,7 +151,7 @@ impl Draw for NodeState {
                 .block(
                     Block::bordered()
                         .padding(Padding::left(1))
-                        .title("Bitcoin Core")
+                        .title(vec![self.title.to_string(), self.alias.to_string()].join(" | "))
                         .title_alignment(Alignment::Center)
                         .border_type(BorderType::Plain),
                 )
