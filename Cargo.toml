@@ -28,4 +28,3 @@ async-trait = "0.1.81"
 anyhow = "1.0.86"
 zmq = "0.10.0"
 bitcoincore-zmq = { version = "1.5.1", features = ["async"] }
-cln-rpc = "0.4.0"
