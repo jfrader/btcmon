@@ -35,7 +35,7 @@ impl NodeState {
 
 impl DrawStatus for NodeState {
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
-        let zmq_status_width = 12;
+        let zmq_status_width = 16;
         let status_bar_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
@@ -56,22 +56,55 @@ impl DrawStatus for NodeState {
             );
         }
 
+        let message = if self.message.is_empty() {
+            "".to_string()
+        } else {
+            vec!["|".to_string(), self.message.clone()]
+                .join(" ")
+                .to_string()
+        };
+
         frame.render_widget(
-            Paragraph::new(format!("Node {}", self.status))
+            Paragraph::new(format!("Node {} {}", self.status, message))
                 .block(Block::new().padding(Padding::left(1)))
                 .style(Style::default().fg(Color::White).bg(Color::Black)),
             status_bar_layout[1],
         );
 
-        frame.render_widget(
-            Paragraph::new(format!(
-                "ZMQ {:?} ",
-                self.services.get("ZMQ").unwrap_or(&NodeStatus::Offline)
-            ))
-            .style(Style::default().fg(Color::White).bg(Color::Black))
-            .right_aligned(),
-            status_bar_layout[2],
-        );
+        let now = std::time::Instant::now();
+
+        let switch_interval = std::time::Duration::from_secs(5);
+
+        let keys: Vec<_> = self.services.keys().cloned().collect();
+
+        if !keys.is_empty() {
+            let should_advance = match self.last_service_switch {
+                Some(last) => now.duration_since(last) >= switch_interval,
+                None => true,
+            };
+
+            if should_advance {
+                let mutable_self = self as *const _ as *mut Self;
+                unsafe {
+                    (*mutable_self).service_display_index =
+                        (self.service_display_index + 1) % keys.len();
+                    (*mutable_self).last_service_switch = Some(now);
+                }
+            }
+
+            let current_key = &keys[self.service_display_index];
+            let status = self
+                .services
+                .get(current_key)
+                .unwrap_or(&NodeStatus::Offline);
+
+            frame.render_widget(
+                Paragraph::new(format!("{} {:?} ", current_key, status))
+                    .style(get_status_style(&status))
+                    .right_aligned(),
+                status_bar_layout[2],
+            );
+        }
     }
 }
 

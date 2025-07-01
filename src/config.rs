@@ -15,6 +15,12 @@ pub struct BitcoinCoreSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct CoreLightningSettings {
+    pub rpc_socket_path: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct PriceSettings {
     pub enabled: bool,
     pub currency: String,
@@ -28,19 +34,33 @@ pub struct FeesSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct NodeSettings {
+    pub provider: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct AppConfig {
     pub tick_rate: String,
     pub price: PriceSettings,
     pub fees: FeesSettings,
     pub bitcoin_core: BitcoinCoreSettings,
+    pub core_lightning: CoreLightningSettings,
+    pub lnd: LndSettings,
+    pub node: NodeSettings,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
+pub struct LndSettings {
+    pub rest_address: String,
+    pub macaroon_hex: String,
 }
 
 fn match_string_to_bool(value: &str) -> bool {
     match value {
-        "true" => true,
-        "1" => true,
-        "false" => false,
-        "0" => false,
+        "true" | "1" => true,
+        "false" | "0" => false,
         _ => false,
     }
 }
@@ -53,12 +73,19 @@ impl AppConfig {
         let mut s = Config::builder()
             // general
             .set_default("tick_rate", 250)?
-            // bitcoin core
+            // node provider default
+            .set_default("node.provider", "bitcoin_core")?
+            // bitcoin core defaults
             .set_default("bitcoin_core.host", "localhost")?
             .set_default("bitcoin_core.rpc_port", 8332)?
             .set_default("bitcoin_core.rpc_user", "username")?
             .set_default("bitcoin_core.rpc_password", "password")?
             .set_default("bitcoin_core.zmq_port", 28332)?
+            // core lightning defaults
+            .set_default("core_lightning.rpc_socket_path", "/tmp/lightning-rpc")?
+            // lnd defaults
+            .set_default("lnd.rest_address", "https://localhost:8080")?
+            .set_default("lnd.macaroon_hex", "")?
             // price
             .set_default("price.enabled", true)?
             .set_default("price.currency", "USD")?
@@ -94,10 +121,7 @@ impl AppConfig {
                 .and_then(|v| Some(v.first().unwrap().as_str()))
             {
                 match key.as_str() {
-                    "price.enabled" => {
-                        s = s.set_override(key, match_string_to_bool(value))?;
-                    }
-                    "fees.enabled" => {
+                    "price.enabled" | "fees.enabled" => {
                         s = s.set_override(key, match_string_to_bool(value))?;
                     }
                     _ => {

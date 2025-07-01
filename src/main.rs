@@ -2,6 +2,8 @@ use btcmon::app::{App, AppResult, AppThread};
 use btcmon::config;
 use btcmon::event::{Event, EventHandler};
 use btcmon::node::providers::bitcoin_core::BitcoinCore;
+use btcmon::node::providers::core_lightning::CoreLightning;
+use btcmon::node::providers::lnd::LndNode;
 use btcmon::node::NodeProvider;
 use btcmon::tui::Tui;
 use ratatui::backend::CrosstermBackend;
@@ -33,8 +35,14 @@ async fn main() -> AppResult<()> {
     tui.init()?;
     tui.draw(&config, &mut app)?;
 
-    let provider: Box<dyn NodeProvider + Send + 'static> = match config.bitcoin_core.host {
-        _ => Box::new(BitcoinCore::new(&config)),
+    let provider: Box<dyn NodeProvider + Send + 'static> = match config.node.provider.as_str() {
+        "bitcoin_core" => Box::new(BitcoinCore::new(&config)),
+        "core_lightning" => Box::new(CoreLightning::new(&config)),
+        "lnd" => Box::new(LndNode::new(&config)),
+        other => {
+            eprintln!("Unknown node provider: '{}'. Expected one of: bitcoin_core, core_lightning, lnd", other);
+            std::process::exit(1);
+        }
     };
 
     app.init_node(provider);

@@ -23,6 +23,7 @@ pub struct NodeChannel<E> {
 pub enum NodeStatus {
     Online,
     Offline,
+    Connecting,
     Synchronizing,
 }
 
@@ -40,23 +41,29 @@ pub enum NodeEvent {
 
 #[derive(Clone, Debug)]
 pub struct NodeState {
+    pub message: String,
     pub status: NodeStatus,
     pub height: u64,
     pub headers: u64,
     pub last_hash: String,
     pub last_hash_instant: Option<Instant>,
     pub services: HashMap<String, NodeStatus>,
+    pub service_display_index: usize,
+    pub last_service_switch: Option<std::time::Instant>,
 }
 
 impl Default for NodeState {
     fn default() -> Self {
         Self {
+            message: "".to_string(),
             status: NodeStatus::Offline,
             height: 0,
             headers: 0,
             last_hash: "".to_string(),
             last_hash_instant: None,
             services: HashMap::new(),
+            last_service_switch: None,
+            service_display_index: 0,
         }
     }
 }

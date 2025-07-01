@@ -1,9 +1,12 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use bitcoin::consensus::deserialize;
+use bitcoin::{Block, BlockHash};
 use bitcoincore_rpc::{json::GetBlockchainInfoResult, RpcApi};
 use bitcoincore_zmq::subscribe_async_monitor_stream::MessageStream;
 use bitcoincore_zmq::{subscribe_async_wait_handshake, SocketEvent, SocketMessage};
 use futures::StreamExt;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio::time;
 use tokio::time::Instant;
@@ -22,7 +25,50 @@ pub struct BitcoinCore {
 }
 
 impl BitcoinCore {
+    fn get_op_return_data(&self, block_hash: &str) -> Result<String> {
+        // Fetch the block in hex format
+        let block_hex = self
+            .rpc_client
+            .get_block_hex(&BlockHash::from_str(block_hash)?)?;
+        // Decode the block
+        let block_bytes = hex::decode(&block_hex)?;
+        let block: Block = deserialize(&block_bytes)?;
+
+        let mut op_returns = Vec::new();
+
+        // Iterate through transactions in the block
+        for tx in block.txdata {
+            for (_index, output) in tx.output.iter().enumerate() {
+                if output.script_pubkey.is_op_return() {
+                    if let Some(bytes) = output.script_pubkey.as_bytes().get(1..) {
+                        if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                            if !text.is_empty() {
+                                op_returns.push(text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(if op_returns.is_empty() {
+            "".to_string()
+        } else {
+            op_returns.join(" | ")
+        })
+    }
     async fn get_blockchain_info(&mut self) -> Result<GetBlockchainInfoResult> {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.status == NodeStatus::Offline {
+                state.status = NodeStatus::Connecting;
+                *state
+                    .services
+                    .entry("RPC".to_string())
+                    .or_insert(NodeStatus::Connecting) = NodeStatus::Connecting;
+            }
+        }
+
         match self.rpc_client.get_blockchain_info() {
             Ok(blockchain_info) => {
                 let mut state = self.state.lock().unwrap();
@@ -36,6 +82,12 @@ impl BitcoinCore {
                 state.last_hash = blockchain_info.best_block_hash.to_string();
                 state.headers = blockchain_info.headers;
                 state.height = blockchain_info.blocks;
+
+                state.message =
+                    match self.get_op_return_data(&blockchain_info.best_block_hash.to_string()) {
+                        Ok(r) => r,
+                        Err(_) => "".to_string(),
+                    };
 
                 *state
                     .services
@@ -62,7 +114,7 @@ impl BitcoinCore {
         mut stream: MessageStream,
     ) -> tokio::task::JoinHandle<()> {
         let token = thread.token.clone();
-        let state = self.state.clone();
+        let state: Arc<Mutex<NodeState>> = self.state.clone();
         thread.tracker.spawn(async move {
             loop {
                 let recv = tokio::select! {
@@ -114,6 +166,8 @@ impl BitcoinCore {
         zmq_url: &str,
     ) -> Result<tokio::task::JoinHandle<()>> {
         let urls = [zmq_url];
+        let state: Arc<Mutex<NodeState>> = self.state.clone();
+        BitcoinCore::set_service_status(&state, "ZMQ", NodeStatus::Connecting);
 
         let select = tokio::select! {
             r = tokio::time::timeout(
@@ -129,6 +183,7 @@ impl BitcoinCore {
                 stream
             }
             _ => {
+                BitcoinCore::set_service_status(&state, "ZMQ", NodeStatus::Offline);
                 return Err(anyhow::Error::msg("Failed to subscribe to ZMQ"));
             }
         };
