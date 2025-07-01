@@ -41,6 +41,9 @@ pub enum NodeEvent {
 
 #[derive(Clone, Debug)]
 pub struct NodeState {
+    pub title: String,
+    pub alias: String,
+    pub host: String,
     pub message: String,
     pub status: NodeStatus,
     pub height: u64,
@@ -55,6 +58,9 @@ pub struct NodeState {
 impl Default for NodeState {
     fn default() -> Self {
         Self {
+            title: "".to_string(),
+            alias: "".to_string(),
+            host: "".to_string(),
             message: "".to_string(),
             status: NodeStatus::Offline,
             height: 0,

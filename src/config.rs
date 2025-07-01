@@ -16,9 +16,9 @@ pub struct BitcoinCoreSettings {
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct CoreLightningSettings {
-    pub rpc_socket_path: String,
+    pub rest_address: String,
+    pub rest_rune: String,
 }
-
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct PriceSettings {
@@ -82,7 +82,8 @@ impl AppConfig {
             .set_default("bitcoin_core.rpc_password", "password")?
             .set_default("bitcoin_core.zmq_port", 28332)?
             // core lightning defaults
-            .set_default("core_lightning.rpc_socket_path", "/tmp/lightning-rpc")?
+            .set_default("core_lightning.rest_address", "https://127.0.0.1:9835")?
+            .set_default("core_lightning.rest_rune", "")?
             // lnd defaults
             .set_default("lnd.rest_address", "https://localhost:8080")?
             .set_default("lnd.macaroon_hex", "")?

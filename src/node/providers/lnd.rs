@@ -48,10 +48,11 @@ impl LndNode {
                 let info = resp.json::<GetInfoResponse>().await?;
 
                 let mut state = self.state.lock().unwrap();
+                state.message = "".to_string();
                 state.status = NodeStatus::Online;
                 state.height = info.block_height;
                 state.last_hash = "N/A".to_string();
-                state.message = format!("Alias: {}", info.alias);
+                state.alias = info.alias;
 
                 *state
                     .services
@@ -90,10 +91,14 @@ impl NodeProvider for LndNode {
         let state = NodeState::new();
         {
             let mut locked_state = state.lock().unwrap();
+            
+            locked_state.title = "LND".to_string();
+            locked_state.host = config.lnd.rest_address.to_string();
+            locked_state.message = "Initializing LND REST...".to_string();
+
             locked_state
                 .services
                 .insert("REST".to_string(), NodeStatus::Offline);
-            locked_state.message = "Initializing LND REST...".to_string();
         }
 
         let address = config.lnd.rest_address.clone();
