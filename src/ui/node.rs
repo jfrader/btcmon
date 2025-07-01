@@ -73,7 +73,7 @@ impl DrawStatus for NodeState {
 
         let now = std::time::Instant::now();
 
-        let switch_interval = std::time::Duration::from_secs(5);
+        let switch_interval = std::time::Duration::from_secs(3);
 
         let keys: Vec<_> = self.services.keys().cloned().collect();
 
