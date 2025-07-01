@@ -83,11 +83,11 @@ impl BitcoinCore {
                 state.headers = blockchain_info.headers;
                 state.height = blockchain_info.blocks;
 
-                state.message =
-                    match self.get_op_return_data(&blockchain_info.best_block_hash.to_string()) {
-                        Ok(r) => r,
-                        Err(_) => "".to_string(),
-                    };
+                // state.message =
+                //     match self.get_op_return_data(&blockchain_info.best_block_hash.to_string()) {
+                //         Ok(r) => r,
+                //         Err(_) => "".to_string(),
+                //     };
 
                 *state
                     .services
