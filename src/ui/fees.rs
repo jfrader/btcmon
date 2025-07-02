@@ -46,8 +46,8 @@ fn get_fee_line<'a>(name: &'a str, value: Option<String>) -> Option<Line<'a>> {
         return Some(Line::from(vec![
             Span::raw(name),
             Span::raw(": "),
-            Span::styled(res, Style::new().white().italic()),
-            Span::styled(" Sats/vbyte ", Style::new().white().italic()),
+            Span::styled(res, Style::new().white()),
+            Span::styled(" Sats/vbyte ", Style::new().white()),
         ]));
     }
 

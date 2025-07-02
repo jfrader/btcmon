@@ -1,5 +1,4 @@
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::prelude::Stylize;
 use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
@@ -28,7 +27,7 @@ impl NodeState {
         };
 
         let popup = Popup::new(" New block! ", sized_paragraph)
-            .style(Style::new().fg(Color::White).bg(Color::Black));
+            .style(Style::new().fg(Color::White));
         frame.render_widget(&popup, frame.size());
     }
 }
@@ -51,7 +50,7 @@ impl DrawStatus for NodeState {
             frame.render_widget(throbber, status_bar_layout[0]);
         } else {
             frame.render_widget(
-                Block::new().style(Style::default().fg(Color::White).bg(Color::Black)),
+                Block::new().style(Style::default().fg(Color::White)),
                 status_bar_layout[0],
             );
         }
@@ -67,7 +66,7 @@ impl DrawStatus for NodeState {
         frame.render_widget(
             Paragraph::new(format!("Node {} | {} {}", self.status, self.host, message))
                 .block(Block::new().padding(Padding::left(1)))
-                .style(Style::default().fg(Color::White).bg(Color::Black)),
+                .style(Style::default().fg(Color::White)),
             status_bar_layout[1],
         );
 
@@ -117,19 +116,19 @@ impl Draw for NodeState {
                 Span::raw("Block Height: "),
                 Span::styled(
                     self.height.to_string(),
-                    Style::new().fg(Color::White).italic(),
+                    Style::new().fg(Color::White),
                 ),
                 Span::raw("/"),
                 Span::styled(
                     self.headers.to_string(),
-                    Style::new().fg(Color::Blue).italic(),
+                    Style::new().fg(Color::Blue),
                 ),
             ]),
             _ => Line::from(vec![
                 Span::raw("Block Height: "),
                 Span::styled(
                     self.height.to_string(),
-                    Style::new().fg(Color::White).italic(),
+                    Style::new().fg(Color::White),
                 ),
             ]),
         };
@@ -140,7 +139,7 @@ impl Draw for NodeState {
                 Span::raw("Last Block: "),
                 Span::styled(
                     self.last_hash.clone(),
-                    Style::new().fg(Color::White).italic(),
+                    Style::new().fg(Color::White),
                 ),
             ]),
             "------".into(),

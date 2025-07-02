@@ -85,9 +85,9 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
 
 pub fn get_status_style(status: &NodeStatus) -> Style {
     match status {
-        NodeStatus::Online => Style::default().fg(Color::Green).bg(Color::Black),
-        NodeStatus::Offline => Style::default().fg(Color::Red).bg(Color::Black),
-        NodeStatus::Synchronizing => Style::default().fg(Color::Yellow).bg(Color::Black),
-        NodeStatus::Connecting => Style::default().fg(Color::Blue).bg(Color::Black),
+        NodeStatus::Online => Style::default().fg(Color::Green),
+        NodeStatus::Offline => Style::default().fg(Color::Red),
+        NodeStatus::Synchronizing => Style::default().fg(Color::Yellow),
+        NodeStatus::Connecting => Style::default().fg(Color::Blue),
     }
 }
