@@ -14,12 +14,12 @@ pub trait Draw {
 }
 
 pub trait DrawStatus {
-    fn draw_status(&self, frame: &mut Frame, area: Rect);
+    fn draw_status(&mut self, frame: &mut Frame, area: Rect);
 }
 
 pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
     let node_state = state.node.clone().unwrap_or_default();
-    let node = node_state.lock().unwrap();
+    let mut node = node_state.lock().unwrap();
     let status_style = get_status_style(&node.status);
 
     let (layout_constraints, status_panel_i): (Vec<Constraint>, usize) =

@@ -52,7 +52,7 @@ pub struct NodeState {
     pub last_hash_instant: Option<Instant>,
     pub services: HashMap<String, NodeStatus>,
     pub service_display_index: usize,
-    pub last_service_switch: Option<std::time::Instant>,
+    pub last_service_switch: Option<Instant>,
 }
 
 impl Default for NodeState {
@@ -77,6 +77,11 @@ impl Default for NodeState {
 impl NodeState {
     pub fn new() -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self::default()))
+    }
+
+    pub fn set_last_service_switch(&mut self, instant: Option<Instant>, service_display_index: usize) {
+        self.last_service_switch = instant;
+        self.service_display_index = service_display_index;
     }
 }
 
