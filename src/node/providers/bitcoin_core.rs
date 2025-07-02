@@ -72,6 +72,14 @@ impl BitcoinCore {
         match self.rpc_client.get_blockchain_info() {
             Ok(blockchain_info) => {
                 let mut state = self.state.lock().unwrap();
+
+                if state.services.get("ZMQ") != Some(&NodeStatus::Online)
+                    && state.height > 0
+                    && state.height < blockchain_info.blocks
+                {
+                    state.last_hash_instant = Some(Instant::now());
+                }
+
                 let new_status = if blockchain_info.blocks < blockchain_info.headers {
                     NodeStatus::Synchronizing
                 } else {

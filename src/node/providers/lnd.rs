@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-use tokio::time::{self, Duration};
+use tokio::time::{self, Duration, Instant};
 
 use crate::{
     app::AppThread,
@@ -48,6 +48,11 @@ impl LndNode {
                 let info = resp.json::<GetInfoResponse>().await?;
 
                 let mut state = self.state.lock().unwrap();
+
+                if state.height > 0 && state.height < info.block_height {
+                    state.last_hash_instant = Some(Instant::now());
+                }
+
                 state.message = "".to_string();
                 state.status = NodeStatus::Online;
                 state.height = info.block_height;
