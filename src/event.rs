@@ -1,8 +1,7 @@
-use std::time::Duration;
-
 use crossterm::event::{Event as CrosstermEvent, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
+use tokio::time::Duration;
 
 use crate::{app::AppResult, fees::FeesState, price::PriceState};
 

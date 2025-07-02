@@ -123,6 +123,9 @@ impl BitcoinCore {
     ) -> tokio::task::JoinHandle<()> {
         let token = thread.token.clone();
         let state: Arc<Mutex<NodeState>> = self.state.clone();
+
+        BitcoinCore::set_service_status(&state, "ZMQ", NodeStatus::Connecting);
+
         thread.tracker.spawn(async move {
             loop {
                 let recv = tokio::select! {

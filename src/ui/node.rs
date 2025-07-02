@@ -6,6 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, BorderType, Padding, Paragraph},
 };
+use tokio::time::{Duration, Instant};
 use tui_popup::{Popup, SizedWrapper};
 
 use crate::node::{NodeState, NodeStatus};
@@ -26,14 +27,14 @@ impl NodeState {
             height: 4,
         };
 
-        let popup = Popup::new(" New block! ", sized_paragraph)
-            .style(Style::new().fg(Color::White));
+        let popup =
+            Popup::new(" New block! ", sized_paragraph).style(Style::new().fg(Color::White));
         frame.render_widget(&popup, frame.size());
     }
 }
 
 impl DrawStatus for NodeState {
-    fn draw_status(&self, frame: &mut Frame, area: Rect) {
+    fn draw_status(&mut self, frame: &mut Frame, area: Rect) {
         let zmq_status_width = 16;
         let status_bar_layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -70,9 +71,9 @@ impl DrawStatus for NodeState {
             status_bar_layout[1],
         );
 
-        let now = std::time::Instant::now();
+        let now = Instant::now();
 
-        let switch_interval = std::time::Duration::from_secs(3);
+        let switch_interval = Duration::from_secs(3);
 
         let keys: Vec<_> = self.services.keys().cloned().collect();
 
@@ -83,12 +84,10 @@ impl DrawStatus for NodeState {
             };
 
             if should_advance {
-                let mutable_self = self as *const _ as *mut Self;
-                unsafe {
-                    (*mutable_self).service_display_index =
-                        (self.service_display_index + 1) % keys.len();
-                    (*mutable_self).last_service_switch = Some(now);
-                }
+                self.set_last_service_switch(
+                    Some(now),
+                    (self.service_display_index + 1) % keys.len(),
+                );
             }
 
             let current_key = &keys[self.service_display_index];
@@ -114,22 +113,13 @@ impl Draw for NodeState {
         let block_height = match self.status {
             NodeStatus::Synchronizing => Line::from(vec![
                 Span::raw("Block Height: "),
-                Span::styled(
-                    self.height.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(self.height.to_string(), Style::new().fg(Color::White)),
                 Span::raw("/"),
-                Span::styled(
-                    self.headers.to_string(),
-                    Style::new().fg(Color::Blue),
-                ),
+                Span::styled(self.headers.to_string(), Style::new().fg(Color::Blue)),
             ]),
             _ => Line::from(vec![
                 Span::raw("Block Height: "),
-                Span::styled(
-                    self.height.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(self.height.to_string(), Style::new().fg(Color::White)),
             ]),
         };
 
@@ -137,10 +127,7 @@ impl Draw for NodeState {
             block_height,
             Line::from(vec![
                 Span::raw("Last Block: "),
-                Span::styled(
-                    self.last_hash.clone(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(self.last_hash.clone(), Style::new().fg(Color::White)),
             ]),
             "------".into(),
         ];
