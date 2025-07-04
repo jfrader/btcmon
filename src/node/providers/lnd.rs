@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -22,7 +22,9 @@ struct GetInfoResponse {
     pub block_height: u64,
     pub alias: String,
     pub num_active_channels: u64,
-    pub num_peers: u32, // Added assuming getinfo provides this
+    pub num_pending_channels: u64, // Added from LND getinfo
+    pub num_inactive_channels: u64, // Added from LND getinfo
+    pub num_peers: u32,             // Already included
     pub synced_to_chain: bool,
     pub synced_to_graph: bool,
 }
@@ -105,45 +107,28 @@ impl DynamicNodeStatefulWidget for LndWidget {
             Line::from(vec![
                 Span::raw("Synced to Bitcoin: "),
                 Span::styled(
-                    if state.synced_to_chain {
-                        "True"
-                    } else {
-                        "False"
-                    },
+                    if state.synced_to_chain { "True" } else { "False" },
                     Style::new().fg(Color::White),
                 ),
             ]),
             Line::from(vec![
                 Span::raw("Synced to Lightning: "),
                 Span::styled(
-                    if state.synced_to_graph {
-                        "True"
-                    } else {
-                        "False"
-                    },
+                    if state.synced_to_graph { "True" } else { "False" },
                     Style::new().fg(Color::White),
                 ),
             ]),
             Line::from(vec![
                 Span::raw("Active Channels: "),
-                Span::styled(
-                    state.num_active_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(state.num_active_channels.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Pending Channels: "),
-                Span::styled(
-                    state.num_pending_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(state.num_pending_channels.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Inactive Channels: "),
-                Span::styled(
-                    state.num_inactive_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::styled(state.num_inactive_channels.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Peers: "),
@@ -186,26 +171,13 @@ impl LndNode {
                 }
 
                 let info = resp.json::<GetInfoResponse>().await?;
-                let (
-                    num_pending_channels,
-                    num_inactive_channels,
-                    capacity,
-                    local_balance,
-                    remote_balance,
-                ) = match self.get_channels().await {
+                let (capacity, local_balance, remote_balance) = match self.get_channels().await {
                     Ok(channels) => {
-                        let all_channels = channels.channels;
-                        let active_channels =
-                            all_channels.iter().filter(|c| c.active).collect::<Vec<_>>();
-                        let inactive_channels = all_channels
+                        let active_channels = channels
+                            .channels
                             .iter()
-                            .filter(|c| !c.active)
+                            .filter(|c| c.active)
                             .collect::<Vec<_>>();
-
-                        // Approximate pending channels: channels that exist but are not fully active (simplified)
-                        let pending_channels = all_channels.len() as u64
-                            - active_channels.len() as u64
-                            - inactive_channels.len() as u64;
                         let capacity = active_channels
                             .iter()
                             .map(|c| c.capacity.parse().unwrap_or(0))
@@ -218,16 +190,9 @@ impl LndNode {
                             .iter()
                             .map(|c| c.remote_balance.parse().unwrap_or(0))
                             .sum::<u64>();
-
-                        (
-                            pending_channels,
-                            inactive_channels.len() as u64,
-                            capacity,
-                            local_balance,
-                            remote_balance,
-                        )
+                        (capacity, local_balance, remote_balance)
                     }
-                    Err(_) => (0, 0, 0, 0, 0),
+                    Err(_) => (0, 0, 0),
                 };
 
                 let new_status = if info.synced_to_chain && info.synced_to_graph {
@@ -258,9 +223,9 @@ impl LndNode {
                         title: widget_state.title.clone(),
                         alias: info.alias.clone(),
                         num_peers: info.num_peers,
-                        num_pending_channels,
+                        num_pending_channels: info.num_pending_channels,
                         num_active_channels: info.num_active_channels,
-                        num_inactive_channels,
+                        num_inactive_channels: info.num_inactive_channels,
                         capacity,
                         local_balance,
                         remote_balance,
