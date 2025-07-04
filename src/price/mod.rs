@@ -21,7 +21,7 @@ impl FromStr for PriceCurrency {
         match input {
             "USD" => Ok(PriceCurrency::USD),
             "EUR" => Ok(PriceCurrency::EUR),
-            _ => Err(anyhow::Error::msg("Currency not allowed")),
+            _ => Err(anyhow::Error::msg("Currency not supported")),
         }
     }
 }
