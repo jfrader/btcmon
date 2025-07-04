@@ -24,6 +24,7 @@ pub struct CoreLightningSettings {
 pub struct PriceSettings {
     pub enabled: bool,
     pub currency: String,
+    pub big_text: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -89,6 +90,7 @@ impl AppConfig {
             .set_default("lnd.macaroon_hex", "")?
             // price
             .set_default("price.enabled", true)?
+            .set_default("price.big_text", true)?
             .set_default("price.currency", "USD")?
             // fees
             .set_default("fees.enabled", true)?;

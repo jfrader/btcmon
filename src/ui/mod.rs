@@ -4,7 +4,11 @@ use crate::{
     app::AppState,
     config::AppConfig,
     node::NodeStatus,
-    ui::{fees::FeesWidget, node::NodeStatusWidget, price::PriceWidget},
+    ui::{
+        fees::FeesWidget,
+        node::NodeStatusWidget,
+        price::{PriceWidget, PriceWidgetOptions},
+    },
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -52,20 +56,25 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
         .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(*bottom_panel);
 
+    let price_widget = PriceWidget::new(PriceWidgetOptions {
+        big_text: config.price.big_text,
+    });
+
+    let fees_widget = FeesWidget;
 
     match (config.price.enabled, config.fees.enabled) {
         (true, true) => {
             let bottom_panel_left = &bottom_panel_layout[0];
             let bottom_panel_right = &bottom_panel_layout[1];
 
-            frame.render_stateful_widget(PriceWidget, *bottom_panel_right, state);
-            frame.render_stateful_widget(FeesWidget, *bottom_panel_left, state);
+            frame.render_stateful_widget(price_widget, *bottom_panel_right, state);
+            frame.render_stateful_widget(fees_widget, *bottom_panel_left, state);
         }
         (true, false) => {
-            frame.render_stateful_widget(PriceWidget, *bottom_panel, state);
+            frame.render_stateful_widget(price_widget, *bottom_panel, state);
         }
         (false, true) => {
-            frame.render_stateful_widget(FeesWidget, *bottom_panel, state);
+            frame.render_stateful_widget(fees_widget, *bottom_panel, state);
         }
         _ => {}
     }

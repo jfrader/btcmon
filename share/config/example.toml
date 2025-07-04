@@ -21,6 +21,7 @@ macaroon_hex = "replaceme"
 [price]
 enabled = true
 currency = "USD"
+big_text = true
 
 [fees]
 enabled = true
