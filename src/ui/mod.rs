@@ -49,7 +49,7 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
     let bottom_panel = &main_layout[1];
     let bottom_panel_layout = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .constraints(vec![Constraint::Percentage(37), Constraint::Percentage(63)])
         .split(*bottom_panel);
 
 
