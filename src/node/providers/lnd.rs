@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -22,9 +22,9 @@ struct GetInfoResponse {
     pub block_height: u64,
     pub alias: String,
     pub num_active_channels: u64,
-    pub num_pending_channels: u64, // Added from LND getinfo
-    pub num_inactive_channels: u64, // Added from LND getinfo
-    pub num_peers: u32,             // Already included
+    pub num_pending_channels: u64,
+    pub num_inactive_channels: u64,
+    pub num_peers: u32,
     pub synced_to_chain: bool,
     pub synced_to_graph: bool,
 }
@@ -107,28 +107,45 @@ impl DynamicNodeStatefulWidget for LndWidget {
             Line::from(vec![
                 Span::raw("Synced to Bitcoin: "),
                 Span::styled(
-                    if state.synced_to_chain { "True" } else { "False" },
+                    if state.synced_to_chain {
+                        "True"
+                    } else {
+                        "False"
+                    },
                     Style::new().fg(Color::White),
                 ),
             ]),
             Line::from(vec![
                 Span::raw("Synced to Lightning: "),
                 Span::styled(
-                    if state.synced_to_graph { "True" } else { "False" },
+                    if state.synced_to_graph {
+                        "True"
+                    } else {
+                        "False"
+                    },
                     Style::new().fg(Color::White),
                 ),
             ]),
             Line::from(vec![
                 Span::raw("Active Channels: "),
-                Span::styled(state.num_active_channels.to_string(), Style::new().fg(Color::White)),
+                Span::styled(
+                    state.num_active_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Pending Channels: "),
-                Span::styled(state.num_pending_channels.to_string(), Style::new().fg(Color::White)),
+                Span::styled(
+                    state.num_pending_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Inactive Channels: "),
-                Span::styled(state.num_inactive_channels.to_string(), Style::new().fg(Color::White)),
+                Span::styled(
+                    state.num_inactive_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Peers: "),
