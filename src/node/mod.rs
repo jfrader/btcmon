@@ -1,6 +1,7 @@
 // node/mod.rs
 
 pub mod providers;
+pub mod widgets;
 
 use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState}};
 use anyhow::Result;

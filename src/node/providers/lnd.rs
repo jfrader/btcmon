@@ -1,33 +1,36 @@
-use super::super::{AppConfig, AppThread, NodeProvider, NodeStatus};
-use crate::event::Event;
-use crate::node::NodeState;
-use crate::ui::get_status_style;
-use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Gauge, Padding, Paragraph, Widget};
+use ratatui::widgets::Widget;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
+use crate::event::Event;
+use crate::node::widgets::BlockedParagraphWithGauge;
+use crate::node::{NodeState, NodeStatus};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
+use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
+
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
     pub block_height: u64,
     pub alias: String,
-    pub num_active_channels: u64, // LND API field
+    pub num_active_channels: u64,
+    pub synced_to_chain: bool,
+    pub synced_to_graph: bool,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChannelResponse {
     active: bool,
-    capacity: String,      // Total capacity in satoshis
-    local_balance: String, // Local balance in satoshis
+    capacity: String,
+    local_balance: String,
     remote_balance: String,
 }
 
@@ -48,9 +51,11 @@ pub struct LndWidgetState {
     pub title: String,
     pub alias: String,
     pub num_channels: u64,
-    pub capacity: u64,      // Total capacity in satoshis
-    pub local_balance: u64, // Local balance in satoshis
+    pub capacity: u64,
+    pub local_balance: u64,
     pub remote_balance: u64,
+    pub synced_to_chain: bool,
+    pub synced_to_graph: bool,
 }
 
 impl DynamicState for LndWidgetState {
@@ -70,21 +75,50 @@ pub struct LndWidget;
 impl DynamicNodeStatefulWidget for LndWidget {
     fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
         let mut default = LndWidgetState::default();
-        let state = &mut node_state.widget_state;
-        let state = state
+        let state = node_state
+            .widget_state
             .as_any_mut()
             .downcast_mut::<LndWidgetState>()
             .unwrap_or(&mut default);
 
-        let style = get_status_style(&node_state.status);
-        let text = vec![
-            Line::from(vec![
+        let block_height = match node_state.status {
+            NodeStatus::Synchronizing => Line::from(vec![
                 Span::raw("Block Height: "),
                 Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
             ]),
+            _ => Line::from(vec![
+                Span::raw("Block Height: "),
+                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
+            ]),
+        };
+
+        let lines = vec![
+            block_height,
             Line::from(vec![
                 Span::raw("Alias: "),
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Synced to Bitcoin: "),
+                Span::styled(
+                    if state.synced_to_chain {
+                        "True"
+                    } else {
+                        "False"
+                    },
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Synced to Lightning: "),
+                Span::styled(
+                    if state.synced_to_graph {
+                        "True"
+                    } else {
+                        "False"
+                    },
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Open Channels: "),
@@ -93,41 +127,17 @@ impl DynamicNodeStatefulWidget for LndWidget {
                     Style::new().fg(Color::White),
                 ),
             ]),
-            Line::raw(""), // Spacer
+            Line::raw(""),
         ];
 
-        let block = Block::bordered()
-            .padding(Padding::left(1))
-            .title(state.title.clone())
-            .title_alignment(Alignment::Center)
-            .border_type(BorderType::Plain)
-            .style(style);
-
-        let inner_area = block.inner(area);
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(text.len() as u16), Constraint::Length(3)])
-            .split(inner_area);
-
-        Paragraph::new(text).render(layout[0], buf);
-
-        let gauge = Gauge::default()
-            .gauge_style(Color::Green)
-            .label(Span::styled(
-                format!(
-                    " local {} sats / remote {} sats ",
-                    state.local_balance, state.remote_balance
-                ),
-                Style::new().bg(Color::Black),
-            ))
-            .ratio(if state.capacity > 0 {
-                state.local_balance as f64 / state.capacity as f64
-            } else {
-                0.0
-            });
-
-        gauge.render(layout[1], buf);
-        block.render(area, buf);
+        let widget = BlockedParagraphWithGauge::new(
+            &state.title,
+            node_state.status,
+            lines,
+            state.local_balance,
+            state.capacity,
+        );
+        widget.render(area, buf);
     }
 }
 
@@ -180,6 +190,12 @@ impl LndNode {
                         Err(_) => (info.num_active_channels, 0, 0, 0),
                     };
 
+                let new_status = if info.synced_to_chain && info.synced_to_graph {
+                    NodeStatus::Online
+                } else {
+                    NodeStatus::Synchronizing
+                };
+
                 let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
                     let widget_state = state
                         .widget_state
@@ -192,7 +208,7 @@ impl LndNode {
                     }
 
                     state.message = "".to_string();
-                    state.status = NodeStatus::Online;
+                    state.status = new_status;
                     state.height = info.block_height;
                     *state
                         .services
@@ -205,13 +221,25 @@ impl LndNode {
                         capacity,
                         local_balance,
                         remote_balance,
+                        synced_to_chain: info.synced_to_chain,
+                        synced_to_graph: info.synced_to_graph,
                     });
                     state
                 })));
 
                 Ok(())
             }
-            Err(e) => Err(anyhow::anyhow!("Request error: {}", e)),
+            Err(e) => {
+                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
+                    state.status = NodeStatus::Offline;
+                    *state
+                        .services
+                        .entry("REST".to_string())
+                        .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
+                    state
+                })));
+                Err(anyhow::anyhow!("Request error: {}", e))
+            }
         }
     }
 
@@ -239,21 +267,7 @@ impl LndNode {
     }
 
     async fn check_node_status(&self, sender: UnboundedSender<Event>) -> Result<()> {
-        match self.get_node_info(sender.clone()).await {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                    state.status = NodeStatus::Offline;
-                    *state
-                        .services
-                        .entry("REST".to_string())
-                        .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
-
-                    state
-                })));
-                Err(e)
-            }
-        }
+        self.get_node_info(sender).await
     }
 }
 
@@ -294,6 +308,8 @@ impl NodeProvider for LndNode {
                     capacity: 0,
                     local_balance: 0,
                     remote_balance: 0,
+                    synced_to_chain: false,
+                    synced_to_graph: false,
                 });
                 state
             })));

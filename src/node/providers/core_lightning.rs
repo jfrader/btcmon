@@ -1,20 +1,25 @@
-use super::super::{AppConfig, AppThread, NodeProvider, NodeStatus};
-use crate::event::Event;
-use crate::node::NodeState;
-use crate::ui::get_status_style;
-use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Gauge, Padding, Paragraph, Widget};
+use ratatui::widgets::Widget;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
+
+use crate::event::Event;
+use crate::node::widgets::BlockedParagraphWithGauge;
+use crate::node::{NodeState, NodeStatus};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
+use crate::{
+    app::AppThread,
+    config::AppConfig,
+    node::NodeProvider,
+};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
@@ -24,11 +29,11 @@ struct GetInfoResponse {
 
 #[derive(Debug, Deserialize)]
 struct Channel {
-    state: String, // e.g., "CHANNELD_NORMAL" for active channels
+    state: String,
     #[serde(default, alias = "msatoshi_total", alias = "total_msat")]
-    msatoshi_total: u64, // Total channel capacity in millisatoshis
+    msatoshi_total: u64,
     #[serde(default, alias = "msatoshi_to_us", alias = "to_us_msat")]
-    msatoshi_to_us: u64, // Local balance in millisatoshis
+    msatoshi_to_us: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,8 +58,8 @@ pub struct CoreLightningWidgetState {
     pub title: String,
     pub alias: String,
     pub num_channels: u64,
-    pub total_capacity: u64, // Total capacity in satoshis
-    pub local_balance: u64,  // Local balance in satoshis
+    pub total_capacity: u64,
+    pub local_balance: u64,
 }
 
 impl DynamicState for CoreLightningWidgetState {
@@ -72,16 +77,15 @@ impl DynamicState for CoreLightningWidgetState {
 pub struct CoreLightningWidget;
 
 impl DynamicNodeStatefulWidget for CoreLightningWidget {
-        fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
+    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
         let mut default = CoreLightningWidgetState::default();
-        let state = &mut node_state.widget_state;
-        let state = state
+        let state = node_state
+            .widget_state
             .as_any_mut()
             .downcast_mut::<CoreLightningWidgetState>()
             .unwrap_or(&mut default);
 
-        let style = get_status_style(&node_state.status);
-        let text = vec![
+        let lines = vec![
             Line::from(vec![
                 Span::raw("Block Height: "),
                 Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
@@ -97,42 +101,17 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                     Style::new().fg(Color::White),
                 ),
             ]),
-            Line::raw(""), // Spacer
+            Line::raw(""),
         ];
 
-        let block = Block::bordered()
-            .padding(Padding::left(1))
-            .title(state.title.clone())
-            .title_alignment(Alignment::Center)
-            .border_type(BorderType::Plain)
-            .style(style);
-
-        let inner_area = block.inner(area);
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(text.len() as u16), Constraint::Length(3)])
-            .split(inner_area);
-
-        Paragraph::new(text).render(layout[0], buf);
-
-        let gauge = Gauge::default()
-            .gauge_style(Color::Green)
-            .label(Span::styled(
-                format!(
-                    " local {} sats / remote {} sats ",
-                    state.local_balance,
-                    state.total_capacity - state.local_balance
-                ),
-                Style::new().bg(Color::Black),
-            ))
-            .ratio(if state.total_capacity > 0 {
-                state.local_balance as f64 / state.total_capacity as f64
-            } else {
-                0.0
-            });
-
-        gauge.render(layout[1], buf);
-        block.render(area, buf);
+        let widget = BlockedParagraphWithGauge::new(
+            &state.title,
+            node_state.status,
+            lines,
+            state.local_balance,
+            state.total_capacity,
+        );
+        widget.render(area, buf);
     }
 }
 

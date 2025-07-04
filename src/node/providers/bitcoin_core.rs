@@ -1,5 +1,3 @@
-// node/bitcoin_core.rs
-
 use anyhow::Result;
 use async_trait::async_trait;
 use bitcoin::consensus::deserialize;
@@ -9,10 +7,10 @@ use bitcoincore_zmq::subscribe_async_monitor_stream::MessageStream;
 use bitcoincore_zmq::{subscribe_async_wait_handshake, SocketEvent, SocketMessage};
 use futures::StreamExt;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Padding, Paragraph, Widget};
+use ratatui::widgets::Widget;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
@@ -20,14 +18,10 @@ use tokio::time;
 use tokio::time::Instant;
 
 use crate::event::Event;
-use crate::node::NodeState;
-use crate::ui::get_status_style;
+use crate::node::widgets::BlockedParagraph;
+use crate::node::{NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{
-    app::AppThread,
-    config::AppConfig,
-    node::{NodeProvider, NodeStatus},
-};
+use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
 
 #[derive(Clone)]
 pub struct BitcoinCore {
@@ -60,13 +54,12 @@ pub struct BitcoinCoreWidget;
 impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
     fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
         let mut default = BitcoinCoreWidgetState::default();
-        let state = &mut node_state.widget_state;
-        let state = state
+        let state = node_state
+            .widget_state
             .as_any_mut()
             .downcast_mut::<BitcoinCoreWidgetState>()
             .unwrap_or(&mut default);
 
-        let style = get_status_style(&node_state.status);
         let block_height = match node_state.status {
             NodeStatus::Synchronizing => Line::from(vec![
                 Span::raw("Block Height: "),
@@ -80,25 +73,17 @@ impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
             ]),
         };
 
-        let text = vec![
+        let lines = vec![
             block_height,
             Line::from(vec![
                 Span::raw("Last Block: "),
                 Span::styled(state.last_hash.clone(), Style::new().fg(Color::White)),
             ]),
-            "------".into(),
+            Line::raw("------"),
         ];
 
-        Paragraph::new(text)
-            .block(
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .title(state.title.clone())
-                    .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Plain)
-                    .style(style),
-            )
-            .render(area, buf);
+        let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
+        widget.render(area, buf);
     }
 }
 
@@ -171,7 +156,7 @@ impl BitcoinCore {
                     *state
                         .services
                         .entry("RPC".to_string())
-                        .or_insert(new_status) = new_status;
+                        .or_insert(NodeStatus::Online) = NodeStatus::Online;
 
                     state.widget_state = Box::new(BitcoinCoreWidgetState {
                         title: "Bitcoin Core".to_string(),

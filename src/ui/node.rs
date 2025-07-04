@@ -12,7 +12,7 @@ use super::{get_status_style, DrawStatus};
 
 impl DrawStatus for NodeState {
     fn draw_status(&mut self, frame: &mut Frame, area: Rect) {
-        let zmq_status_width = 16;
+        let zmq_status_width = 24;
         let status_bar_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
