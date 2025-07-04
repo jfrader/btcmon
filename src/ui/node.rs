@@ -13,7 +13,7 @@ impl StatefulWidget for NodeStatusWidget {
     type State = NodeState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let zmq_status_width = 24;
+        let zmq_status_width = 20;
         let status_bar_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![

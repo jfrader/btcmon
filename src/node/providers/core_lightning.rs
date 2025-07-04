@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -15,16 +15,16 @@ use crate::event::Event;
 use crate::node::widgets::BlockedParagraphWithGauge;
 use crate::node::{NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{
-    app::AppThread,
-    config::AppConfig,
-    node::NodeProvider,
-};
+use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
     pub alias: String,
     pub blockheight: u64,
+    pub num_peers: u32,
+    pub num_pending_channels: u32,
+    pub num_active_channels: u32,
+    pub num_inactive_channels: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,7 +57,10 @@ pub struct CoreLightning {
 pub struct CoreLightningWidgetState {
     pub title: String,
     pub alias: String,
-    pub num_channels: u64,
+    pub num_peers: u32,
+    pub num_pending_channels: u32,
+    pub num_active_channels: u32,
+    pub num_inactive_channels: u32,
     pub total_capacity: u64,
     pub local_balance: u64,
 }
@@ -95,11 +98,29 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
-                Span::raw("Open Channels: "),
+                Span::raw("Active Channels: "),
                 Span::styled(
-                    state.num_channels.to_string(),
+                    state.num_active_channels.to_string(),
                     Style::new().fg(Color::White),
                 ),
+            ]),
+            Line::from(vec![
+                Span::raw("Pending Channels: "),
+                Span::styled(
+                    state.num_pending_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Inactive Channels: "),
+                Span::styled(
+                    state.num_inactive_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::raw(""),
         ];
@@ -115,143 +136,22 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
     }
 }
 
-impl CoreLightning {
-    async fn get_node_info(&self, sender: UnboundedSender<Event>) -> Result<()> {
-        let url = format!("{}/v1/getinfo", self.rest_address);
-        let info_resp = self
-            .client
-            .post(&url)
-            .header("Rune", &self.rune)
-            .header("Content-Type", "application/json")
-            .body("{}")
-            .send()
-            .await;
-
-        let (status, message, height, alias, num_channels, total_capacity, local_balance) =
-            match info_resp {
-                Ok(resp) => {
-                    let status_code = resp.status();
-                    if !status_code.is_success() {
-                        (
-                            NodeStatus::Offline,
-                            format!("CLN REST HTTP error: {}", status_code),
-                            0,
-                            String::new(),
-                            0,
-                            0,
-                            0,
-                        )
-                    } else {
-                        let info = resp.json::<GetInfoResponse>().await?;
-                        let (num_channels, total_capacity, local_balance, error) =
-                            match self.get_channels().await {
-                                Ok(peers) => {
-                                    let channels = peers
-                                        .peers
-                                        .iter()
-                                        .flat_map(|peer| &peer.channels)
-                                        .filter(|channel| channel.state == "CHANNELD_NORMAL");
-                                    let num = channels.clone().count() as u64;
-                                    let capacity = channels
-                                        .clone()
-                                        .map(|c| c.msatoshi_total / 1000)
-                                        .sum::<u64>();
-                                    let balance =
-                                        channels.map(|c| c.msatoshi_to_us / 1000).sum::<u64>();
-                                    (num, capacity, balance, String::new())
-                                }
-                                Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
-                            };
-                        (
-                            NodeStatus::Online,
-                            error,
-                            info.blockheight,
-                            info.alias,
-                            num_channels,
-                            total_capacity,
-                            local_balance,
-                        )
-                    }
-                }
-                Err(e) => (
-                    NodeStatus::Offline,
-                    format!("Request error: {}", e),
-                    0,
-                    String::new(),
-                    0,
-                    0,
-                    0,
-                ),
-            };
-
-        let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-            let widget_state = state
-                .widget_state
-                .as_any()
-                .downcast_ref::<CoreLightningWidgetState>()
-                .unwrap();
-
-            *state.services.entry("REST".to_string()).or_insert(status) = status;
-
-            if state.height > 0 && state.height < height {
-                state.last_hash_instant = Some(Instant::now());
-            }
-
-            state.status = status;
-            state.message = message.clone();
-            state.height = height;
-            state.widget_state = Box::new(CoreLightningWidgetState {
-                title: widget_state.title.clone(),
-                alias: alias.clone(),
-                num_channels,
-                total_capacity,
-                local_balance,
-            });
-
-            state
-        })));
-
-        if status == NodeStatus::Offline {
-            return Err(anyhow::anyhow!("Node info fetch failed"));
-        }
-        Ok(())
-    }
-
-    async fn get_channels(&self) -> Result<PeersResponse> {
-        let url = format!("{}/v1/listpeers", self.rest_address);
-        let resp = self
-            .client
-            .post(&url)
-            .header("Rune", &self.rune)
-            .header("Content-Type", "application/json")
-            .body("{}")
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!(
-                "CLN listPeers returned {}: {}",
-                status,
-                body
-            ));
-        }
-
-        let peers: PeersResponse = resp.json().await?;
-        Ok(peers)
-    }
-
-    async fn check_node_status(&self, sender: UnboundedSender<Event>) -> Result<()> {
-        self.get_node_info(sender).await
-    }
+#[derive(Debug)]
+struct NodeInfo {
+    status: NodeStatus,
+    message: String,
+    height: u64,
+    alias: String,
+    num_peers: u32,
+    num_pending_channels: u32,
+    num_active_channels: u32,
+    num_inactive_channels: u32,
+    total_capacity: u64,
+    local_balance: u64,
 }
 
-#[async_trait]
-impl NodeProvider for CoreLightning {
-    fn new(config: &AppConfig) -> Self {
-        let rest_address = config.core_lightning.rest_address.clone();
-        let rune = config.core_lightning.rest_rune.clone();
+impl CoreLightning {
+    fn new(rest_address: String, rune: String) -> Self {
         let client = Client::builder()
             .danger_accept_invalid_certs(true)
             .build()
@@ -264,9 +164,153 @@ impl NodeProvider for CoreLightning {
         }
     }
 
+    async fn fetch_node_info(&self) -> Result<GetInfoResponse> {
+        let url = format!("{}/v1/getinfo", self.rest_address);
+        let response = self
+            .client
+            .post(&url)
+            .header("Rune", &self.rune)
+            .header("Content-Type", "application/json")
+            .body("{}")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("CLN REST HTTP error: {}", response.status()));
+        }
+
+        Ok(response.json::<GetInfoResponse>().await?)
+    }
+
+    async fn fetch_channels(&self) -> Result<PeersResponse> {
+        let url = format!("{}/v1/listpeers", self.rest_address);
+        let response = self
+            .client
+            .post(&url)
+            .header("Rune", &self.rune)
+            .header("Content-Type", "application/json")
+            .body("{}")
+            .send()
+            .await?;
+
+        let response_status = response.status();
+
+        if !response_status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "CLN listPeers returned {}: {}",
+                response_status,
+                body
+            ));
+        }
+
+        Ok(response.json::<PeersResponse>().await?)
+    }
+
+    async fn get_node_info(&self) -> Result<NodeInfo> {
+        let info = match self.fetch_node_info().await {
+            Ok(info) => info,
+            Err(e) => {
+                return Ok(NodeInfo {
+                    status: NodeStatus::Offline,
+                    message: format!("Request error: {}", e),
+                    height: 0,
+                    alias: String::new(),
+                    num_peers: 0,
+                    num_pending_channels: 0,
+                    num_active_channels: 0,
+                    num_inactive_channels: 0,
+                    total_capacity: 0,
+                    local_balance: 0,
+                });
+            }
+        };
+
+        let (total_capacity, local_balance, message) = match self.fetch_channels().await {
+            Ok(peers) => {
+                let channels = peers.peers.iter().flat_map(|peer| &peer.channels);
+
+                let capacity = channels
+                    .clone()
+                    .filter(|channel| channel.state == "CHANNELD_NORMAL")
+                    .map(|c| c.msatoshi_total / 1000)
+                    .sum::<u64>();
+
+                let balance = channels
+                    .filter(|channel| channel.state == "CHANNELD_NORMAL")
+                    .map(|c| c.msatoshi_to_us / 1000)
+                    .sum::<u64>();
+
+                (capacity, balance, String::new())
+            }
+            Err(e) => (0, 0, format!("Channels fetch error: {}", e)),
+        };
+
+        Ok(NodeInfo {
+            status: NodeStatus::Online,
+            message,
+            height: info.blockheight,
+            alias: info.alias,
+            num_peers: info.num_peers,
+            num_pending_channels: info.num_pending_channels,
+            num_active_channels: info.num_active_channels,
+            num_inactive_channels: info.num_inactive_channels,
+            total_capacity,
+            local_balance,
+        })
+    }
+
+    async fn update_node_state(&self, sender: UnboundedSender<Event>) -> Result<()> {
+        let node_info = self.get_node_info().await?;
+
+        let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
+            let widget_state = state
+                .widget_state
+                .as_any()
+                .downcast_ref::<CoreLightningWidgetState>()
+                .unwrap();
+
+            state.services.insert("REST".to_string(), node_info.status);
+
+            if state.height > 0 && state.height < node_info.height {
+                state.last_hash_instant = Some(Instant::now());
+            }
+
+            state.status = node_info.status;
+            state.message = node_info.message.clone();
+            state.height = node_info.height;
+            state.widget_state = Box::new(CoreLightningWidgetState {
+                title: widget_state.title.clone(),
+                alias: node_info.alias.clone(),
+                num_peers: node_info.num_peers,
+                num_pending_channels: node_info.num_pending_channels,
+                num_active_channels: node_info.num_active_channels,
+                num_inactive_channels: node_info.num_inactive_channels,
+                total_capacity: node_info.total_capacity,
+                local_balance: node_info.local_balance,
+            });
+
+            state
+        })));
+
+        if node_info.status == NodeStatus::Offline {
+            return Err(anyhow!("Node info fetch failed"));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl NodeProvider for CoreLightning {
+    fn new(config: &AppConfig) -> Self {
+        Self::new(
+            config.core_lightning.rest_address.clone(),
+            config.core_lightning.rest_rune.clone(),
+        )
+    }
+
     async fn init(&mut self, thread: AppThread) -> Result<()> {
         let check_interval = Duration::from_secs(15);
-
         let host = self.rest_address.clone();
 
         let _ = thread
@@ -279,10 +323,7 @@ impl NodeProvider for CoreLightning {
                     .insert("REST".to_string(), NodeStatus::Offline);
                 state.widget_state = Box::new(CoreLightningWidgetState {
                     title: "Core Lightning".to_string(),
-                    alias: String::new(),
-                    num_channels: 0,
-                    total_capacity: 0,
-                    local_balance: 0,
+                    ..Default::default()
                 });
                 state
             })));
@@ -292,8 +333,7 @@ impl NodeProvider for CoreLightning {
                 break;
             }
 
-            let _ = self.check_node_status(thread.sender.clone()).await;
-
+            let _ = self.update_node_state(thread.sender.clone()).await;
             time::sleep(check_interval).await;
         }
 
