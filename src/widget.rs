@@ -19,7 +19,7 @@ pub trait DynamicStatefulWidget {
 }
 
 pub trait DynamicNodeStatefulWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &NodeState, state: &mut dyn DynamicState);
+    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState);
 }
 
 #[derive(Clone, Debug)]
