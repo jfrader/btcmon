@@ -16,7 +16,7 @@ rest_rune = "replaceme"
 
 [lnd]
 rest_address = "https://127.0.0.1:8080"
-macaroon_hex = "replaceme>
+macaroon_hex = "replaceme"
 
 [price]
 enabled = true
