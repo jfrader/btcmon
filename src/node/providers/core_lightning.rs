@@ -72,14 +72,9 @@ impl DynamicState for CoreLightningWidgetState {
 pub struct CoreLightningWidget;
 
 impl DynamicNodeStatefulWidget for CoreLightningWidget {
-    fn render_dynamic(
-        &self,
-        area: Rect,
-        buf: &mut Buffer,
-        node_state: &NodeState,
-        state: &mut dyn DynamicState,
-    ) {
+        fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
         let mut default = CoreLightningWidgetState::default();
+        let state = &mut node_state.widget_state;
         let state = state
             .as_any_mut()
             .downcast_mut::<CoreLightningWidgetState>()
@@ -224,7 +219,7 @@ impl CoreLightning {
             }
 
             state.status = status;
-            state.message = "".to_string();
+            state.message = message.clone();
             state.height = height;
             state.widget_state = Box::new(CoreLightningWidgetState {
                 title: widget_state.title.clone(),
