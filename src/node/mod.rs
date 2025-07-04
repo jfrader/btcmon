@@ -1,8 +1,17 @@
+// node/mod.rs
+
 pub mod providers;
 
-use crate::{app::AppThread, config::AppConfig};
+use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState, DynamicStatefulWidget}};
 use anyhow::Result;
 use async_trait::async_trait;
+use ratatui::{
+    layout::Alignment,
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::Paragraph,
+    Frame,
+};
 use std::{
     collections::HashMap,
     fmt,
@@ -13,6 +22,7 @@ use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     time::Instant,
 };
+use tui_popup::{Popup, SizedWrapper};
 
 pub struct NodeChannel<E> {
     pub sender: UnboundedSender<E>,
@@ -27,6 +37,12 @@ pub enum NodeStatus {
     Synchronizing,
 }
 
+impl Default for NodeStatus {
+    fn default() -> Self {
+        NodeStatus::Offline
+    }
+}
+
 impl fmt::Display for NodeStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -39,7 +55,7 @@ pub enum NodeEvent {
     State(NodeState),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NodeState {
     pub title: String,
     pub alias: String,
@@ -53,6 +69,27 @@ pub struct NodeState {
     pub services: HashMap<String, NodeStatus>,
     pub service_display_index: usize,
     pub last_service_switch: Option<Instant>,
+    pub widget_state: Box<dyn DynamicState>,
+}
+
+impl Clone for NodeState {
+    fn clone(&self) -> Self {
+        Self {
+            title: self.title.clone(),
+            alias: self.alias.clone(),
+            host: self.host.clone(),
+            message: self.message.clone(),
+            status: self.status,
+            height: self.height,
+            headers: self.headers,
+            last_hash: self.last_hash.clone(),
+            last_hash_instant: self.last_hash_instant,
+            services: self.services.clone(),
+            last_service_switch: self.last_service_switch,
+            service_display_index: self.service_display_index,
+            widget_state: self.widget_state.clone_box(),
+        }
+    }
 }
 
 impl Default for NodeState {
@@ -70,18 +107,41 @@ impl Default for NodeState {
             services: HashMap::new(),
             last_service_switch: None,
             service_display_index: 0,
+            widget_state: Box::new(DefaultWidgetState),
         }
     }
 }
 
 impl NodeState {
-    pub fn new() -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self::default()))
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn set_last_service_switch(&mut self, instant: Option<Instant>, service_display_index: usize) {
+    pub fn set_last_service_switch(
+        &mut self,
+        instant: Option<Instant>,
+        service_display_index: usize,
+    ) {
         self.last_service_switch = instant;
         self.service_display_index = service_display_index;
+    }
+
+    pub fn draw_new_block_popup(&self, frame: &mut Frame, block_height: u64) {
+        let sized_paragraph = SizedWrapper {
+            inner: Paragraph::new(vec![
+                Line::from(""),
+                Line::from(vec![Span::raw("Height")]),
+                Line::from(vec![Span::raw(block_height.to_string())]),
+                Line::from(""),
+            ])
+            .alignment(Alignment::Center),
+            width: 21,
+            height: 4,
+        };
+
+        let popup =
+            Popup::new(" New block! ", sized_paragraph).style(Style::new().fg(Color::White));
+        frame.render_widget(&popup, frame.size());
     }
 }
 
@@ -91,7 +151,8 @@ pub trait NodeProvider {
     where
         Self: Sized;
     async fn init(&mut self, thread: AppThread) -> Result<()>;
-    fn get_state(&self) -> Arc<Mutex<NodeState>>;
+    fn widget(&self) -> Box<dyn DynamicStatefulWidget>;
+    fn widget_state(&self) -> Box<dyn DynamicState>;
 }
 
 pub struct Node {

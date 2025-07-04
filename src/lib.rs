@@ -21,3 +21,5 @@ pub mod node;
 
 /// Fees
 pub mod fees;
+
+pub mod widget;

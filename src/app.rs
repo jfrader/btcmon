@@ -1,6 +1,8 @@
+// app.rs
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use tokio::time::{Instant, Duration};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::{env, error};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -13,6 +15,7 @@ use crate::fees::{spawn_fees_checker, FeesState};
 use crate::node::{Node, NodeProvider, NodeState};
 use crate::price::providers::coinbase::PriceCoinbase;
 use crate::price::{spawn_price_checker, PriceCurrency, PriceState};
+use crate::widget::{DynamicState, DynamicStatefulWidget};
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -38,7 +41,9 @@ pub struct AppState {
     pub counter: u8,
     pub price: PriceState,
     pub fees: FeesState,
-    pub node: Option<Arc<Mutex<NodeState>>>,
+    pub node: NodeState,
+    pub widget: Box<dyn DynamicStatefulWidget>,
+    pub widget_state: Box<dyn DynamicState>,
 }
 
 pub struct App {
@@ -50,7 +55,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(thread: AppThread) -> Self {
+    pub fn new(thread: AppThread, widget: Box<dyn DynamicStatefulWidget>, widget_state: Box<dyn DynamicState>) -> Self {
         let (args, argv) = argmap::parse(env::args());
         let config = AppConfig::new(args, argv).unwrap();
         let cloned_thread = thread.clone();
@@ -63,13 +68,14 @@ impl App {
                 counter: 0,
                 price: PriceState::new(),
                 fees: FeesState::new(),
-                node: Some(NodeState::new()),
+                node: NodeState::new(),
+                widget,
+                widget_state,
             },
         }
     }
 
     pub fn init_node(&mut self, provider: Box<dyn NodeProvider + Send>) {
-        self.state.node = Some(provider.get_state());
         self.node.init(provider);
     }
 
@@ -84,7 +90,25 @@ impl App {
         spawn_fees_checker::<FeesBlockchainInfo>(self.thread.clone());
     }
 
-    pub fn tick(&mut self) {}
+    pub fn tick(&mut self) {
+        let now = Instant::now();
+        let switch_interval = Duration::from_secs(3);
+        let keys: Vec<_> = self.state.node.services.keys().cloned().collect();
+
+        if !keys.is_empty() {
+            let should_advance = match self.state.node.last_service_switch {
+                Some(last) => now.duration_since(last) >= switch_interval,
+                None => true,
+            };
+
+            if should_advance {
+                let new_index = (self.state.node.service_display_index + 1) % keys.len();
+                self.state
+                    .node
+                    .set_last_service_switch(Some(now), new_index);
+            }
+        }
+    }
 
     pub fn quit(&mut self) {
         self.running = false;
@@ -106,12 +130,19 @@ impl App {
         self.state.price = state;
     }
 
+    pub fn handle_node_update<F>(&mut self, update_fn: F)
+    where
+        F: Fn(NodeState) -> NodeState + Send + Sync,
+    {
+        self.state.node = update_fn(self.state.node.clone());
+        self.state.widget_state = self.state.node.widget_state.clone_box();
+    }
+
     pub fn handle_fee_update(&mut self, state: FeesState) {
         self.state.fees = state;
     }
 
     pub fn handle_key_events(&mut self, key_event: KeyEvent) -> AppResult<()> {
-        // self.reset_last_hash_time();
         match key_event.code {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.quit();

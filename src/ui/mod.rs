@@ -1,3 +1,5 @@
+// ui/mod.rs
+
 use crate::{app::AppState, config::AppConfig, node::NodeStatus};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -17,10 +19,9 @@ pub trait DrawStatus {
     fn draw_status(&mut self, frame: &mut Frame, area: Rect);
 }
 
-pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
-    let node_state = state.node.clone().unwrap_or_default();
-    let mut node = node_state.lock().unwrap();
-    let status_style = get_status_style(&node.status);
+pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
+    let mut node_state = state.node.clone();
+    let status_style = get_status_style(&node_state.status);
 
     let (layout_constraints, status_panel_i): (Vec<Constraint>, usize) =
         if config.price.enabled | config.fees.enabled {
@@ -48,9 +49,7 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         .split(frame.size());
 
     let status_panel = &main_layout[status_panel_i];
-
     let top_panel = &main_layout[0];
-
     let bottom_panel = &main_layout[1];
     let bottom_panel_layout = Layout::default()
         .direction(Direction::Horizontal)
@@ -65,7 +64,6 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
             state
                 .price
                 .draw(frame, *bottom_panel_right, Some(status_style));
-
             state
                 .fees
                 .draw(frame, *bottom_panel_left, Some(status_style));
@@ -79,8 +77,16 @@ pub fn render(config: &AppConfig, state: &AppState, frame: &mut Frame) {
         _ => {}
     }
 
-    node.draw(frame, *top_panel, Some(status_style));
-    node.draw_status(frame, *status_panel);
+    state.widget.render_dynamic(*top_panel, frame.buffer_mut(), &mut *state.widget_state);
+    node_state.widget_state = state.widget_state.clone_box();
+
+    node_state.draw_status(frame, *status_panel);
+
+    if let Some(time) = node_state.last_hash_instant {
+        if time.elapsed().as_secs() < 15 && node_state.status == NodeStatus::Online {
+            node_state.draw_new_block_popup(frame, node_state.height);
+        }
+    }
 }
 
 pub fn get_status_style(status: &NodeStatus) -> Style {
