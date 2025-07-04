@@ -103,7 +103,7 @@ impl DynamicNodeStatefulWidget for LndWidget {
 
         let block = Block::bordered()
             .padding(Padding::left(1))
-            .title(vec![state.title.clone(), state.alias.clone()].join(" | "))
+            .title(state.title.clone())
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Plain)
             .style(style);
