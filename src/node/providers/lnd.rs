@@ -152,21 +152,7 @@ impl LndNode {
                 let status = resp.status();
                 if !status.is_success() {
                     let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                        let widget_state = state
-                            .widget_state
-                            .as_any()
-                            .downcast_ref::<LndWidgetState>()
-                            .unwrap();
-
                         state.message = format!("LND REST error: HTTP {}", status);
-                        state.widget_state = Box::new(LndWidgetState {
-                            title: widget_state.title.clone(),
-                            alias: widget_state.alias.clone(),
-                            num_channels: widget_state.num_channels,
-                            capacity: widget_state.capacity,
-                            local_balance: widget_state.local_balance,
-                            remote_balance: widget_state.remote_balance,
-                        });
                         state
                     })));
                     return Err(anyhow::anyhow!("LND REST non-200: {}", status));
@@ -231,23 +217,6 @@ impl LndNode {
                 Ok(())
             }
             Err(e) => {
-                let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                    let widget_state = state
-                        .widget_state
-                        .as_any()
-                        .downcast_ref::<LndWidgetState>()
-                        .unwrap();
-
-                    state.widget_state = Box::new(LndWidgetState {
-                        title: widget_state.title.clone(),
-                        alias: widget_state.alias.clone(),
-                        num_channels: widget_state.num_channels,
-                        capacity: widget_state.capacity,
-                        local_balance: widget_state.local_balance,
-                        remote_balance: widget_state.remote_balance,
-                    });
-                    state
-                })));
                 Err(anyhow::anyhow!("Request error: {}", e))
             }
         }
@@ -281,26 +250,12 @@ impl LndNode {
             Ok(_) => Ok(()),
             Err(e) => {
                 let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                    let widget_state = state
-                        .widget_state
-                        .as_any()
-                        .downcast_ref::<LndWidgetState>()
-                        .unwrap();
-
                     state.status = NodeStatus::Offline;
                     *state
                         .services
                         .entry("REST".to_string())
                         .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
 
-                    state.widget_state = Box::new(LndWidgetState {
-                        title: widget_state.title.clone(),
-                        alias: widget_state.alias.clone(),
-                        num_channels: widget_state.num_channels,
-                        capacity: widget_state.capacity,
-                        local_balance: widget_state.local_balance,
-                        remote_balance: widget_state.remote_balance,
-                    });
                     state
                 })));
                 Err(e)
