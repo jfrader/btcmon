@@ -2,7 +2,7 @@
 
 pub mod providers;
 
-use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState, DynamicNodeStatefulWidget}};
+use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState}};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::{
@@ -139,8 +139,6 @@ pub trait NodeProvider {
     where
         Self: Sized;
     async fn init(&mut self, thread: AppThread) -> Result<()>;
-    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget>;
-    fn widget_state(&self) -> Box<dyn DynamicState>;
 }
 
 pub struct Node {

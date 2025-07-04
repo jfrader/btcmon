@@ -169,6 +169,7 @@ impl BitcoinCore {
                     };
 
                     state.status = new_status;
+                    state.message = state.host.clone();
                     state.height = blockchain_info.blocks;
 
                     *state
@@ -418,13 +419,5 @@ impl NodeProvider for BitcoinCore {
         }
 
         Ok(())
-    }
-
-    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget> {
-        Box::new(BitcoinCoreWidget)
-    }
-
-    fn widget_state(&self) -> Box<dyn DynamicState> {
-        Box::new(BitcoinCoreWidgetState::default())
     }
 }
