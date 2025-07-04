@@ -15,11 +15,11 @@ pub trait DynamicState: Any + Debug + Send + Sync {
 }
 
 pub trait DynamicStatefulWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, state: &mut dyn DynamicState);
+    fn render(&self, area: Rect, buf: &mut Buffer, state: &mut dyn DynamicState);
 }
 
 pub trait DynamicNodeStatefulWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState);
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState);
 }
 
 #[derive(Clone, Debug)]
@@ -40,7 +40,7 @@ impl DynamicState for DefaultWidgetState {
 pub struct NoProviderWidget;
 
 impl DynamicStatefulWidget for NoProviderWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, _state: &mut dyn DynamicState) {
+    fn render(&self, area: Rect, buf: &mut Buffer, _state: &mut dyn DynamicState) {
         Paragraph::new("No Provider").render(area, buf);
     }
 }

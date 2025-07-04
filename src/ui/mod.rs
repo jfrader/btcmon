@@ -1,8 +1,13 @@
 // ui/mod.rs
 
-use crate::{app::AppState, config::AppConfig, node::NodeStatus};
+use crate::{
+    app::AppState,
+    config::AppConfig,
+    node::NodeStatus,
+    ui::{fees::FeesWidget, node::NodeStatusWidget, price::PriceWidget},
+};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     Frame,
 };
@@ -11,17 +16,8 @@ pub mod fees;
 pub mod node;
 pub mod price;
 
-pub trait Draw {
-    fn draw(&self, frame: &mut Frame, area: Rect, style: Option<Style>);
-}
-
-pub trait DrawStatus {
-    fn draw_status(&mut self, frame: &mut Frame, area: Rect);
-}
-
 pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
     let mut node_state = state.node.clone();
-    let status_style = get_status_style(&node_state.status);
 
     let (layout_constraints, status_panel_i): (Vec<Constraint>, usize) =
         if config.price.enabled | config.fees.enabled {
@@ -56,33 +52,29 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
         .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(*bottom_panel);
 
+
     match (config.price.enabled, config.fees.enabled) {
         (true, true) => {
             let bottom_panel_left = &bottom_panel_layout[0];
             let bottom_panel_right = &bottom_panel_layout[1];
 
-            state
-                .price
-                .draw(frame, *bottom_panel_right, Some(status_style));
-            state
-                .fees
-                .draw(frame, *bottom_panel_left, Some(status_style));
+            frame.render_stateful_widget(PriceWidget, *bottom_panel_right, state);
+            frame.render_stateful_widget(FeesWidget, *bottom_panel_left, state);
         }
         (true, false) => {
-            state.price.draw(frame, *bottom_panel, Some(status_style));
+            frame.render_stateful_widget(PriceWidget, *bottom_panel, state);
         }
         (false, true) => {
-            state.fees.draw(frame, *bottom_panel, Some(status_style));
+            frame.render_stateful_widget(FeesWidget, *bottom_panel, state);
         }
         _ => {}
     }
 
     state
         .widget
-        .render_dynamic(*top_panel, frame.buffer_mut(), &mut node_state);
-    node_state.widget_state = state.widget_state.clone_box();
+        .render(*top_panel, frame.buffer_mut(), &mut node_state);
 
-    node_state.draw_status(frame, *status_panel);
+    frame.render_stateful_widget(NodeStatusWidget, *status_panel, &mut node_state);
 
     if let Some(time) = node_state.last_hash_instant {
         if time.elapsed().as_secs() < 15 && node_state.status == NodeStatus::Online {

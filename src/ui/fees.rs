@@ -1,22 +1,20 @@
-use ratatui::{
-    layout::{Alignment, Rect},
-    prelude::Stylize,
-    style::Style,
-    text::Line,
-    text::Span,
-    widgets::{Block, BorderType, Padding, Paragraph},
-};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Alignment, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget};
 
-use crate::fees::FeesState;
+use crate::app::AppState;
+use crate::ui::get_status_style;
 
-use super::Draw;
+pub struct FeesWidget;
 
-impl Draw for FeesState {
-    fn draw(&self, frame: &mut ratatui::Frame, area: Rect, style: Option<Style>) {
-        let style = style.unwrap_or(Style::new());
+impl StatefulWidget for FeesWidget {
+    type State = AppState;
 
-        let fee_state = self.result.clone();
-        // fee_state.dedup_by(|a, b| a.fee == b.fee);
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let fee_state = state.fees.result.clone();
+        let style = get_status_style(&state.node.status);
 
         let fees: Vec<Option<Line>> = vec![
             Some(Line::from(Span::raw("Priority"))),
@@ -24,7 +22,7 @@ impl Draw for FeesState {
             get_fee_line("Normal", fee_state.medium),
             get_fee_line("High", fee_state.high),
         ];
-        
+
         let filtered_fees: Vec<Line> = fees.into_iter().filter_map(|opt| opt).collect();
 
         let fees_block = Paragraph::new(filtered_fees)
@@ -37,7 +35,7 @@ impl Draw for FeesState {
             )
             .style(style);
 
-        frame.render_widget(fees_block, area);
+        fees_block.render(area, buf);
     }
 }
 
@@ -46,10 +44,9 @@ fn get_fee_line<'a>(name: &'a str, value: Option<String>) -> Option<Line<'a>> {
         return Some(Line::from(vec![
             Span::raw(name),
             Span::raw(": "),
-            Span::styled(res, Style::new().white()),
-            Span::styled(" Sats/vbyte ", Style::new().white()),
+            Span::styled(res, Style::new().fg(Color::White)),
+            Span::styled(" Sats/vbyte ", Style::new().fg(Color::White)),
         ]));
     }
-
     None
 }

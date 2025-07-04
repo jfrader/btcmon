@@ -73,7 +73,7 @@ impl DynamicState for LndWidgetState {
 pub struct LndWidget;
 
 impl DynamicNodeStatefulWidget for LndWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
         let mut default = LndWidgetState::default();
         let state = node_state
             .widget_state

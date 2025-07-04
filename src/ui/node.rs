@@ -1,66 +1,62 @@
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::Frame;
-use ratatui::{
-    layout::{Alignment, Rect},
-    style::{Color, Style},
-    widgets::{Block, Padding, Paragraph},
-};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::widgets::{Block, Padding, Paragraph, StatefulWidget, Widget};
+use throbber_widgets_tui::Throbber;
 
+use super::get_status_style; // Adjust based on your module structure
 use crate::node::{NodeState, NodeStatus};
 
-use super::{get_status_style, DrawStatus};
+pub struct NodeStatusWidget;
 
-impl DrawStatus for NodeState {
-    fn draw_status(&mut self, frame: &mut Frame, area: Rect) {
+impl StatefulWidget for NodeStatusWidget {
+    type State = NodeState;
+
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let zmq_status_width = 24;
         let status_bar_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
                 Constraint::Length(1),
-                Constraint::Length(frame.size().width - zmq_status_width - 1),
+                Constraint::Length(area.width.saturating_sub(zmq_status_width + 1)),
                 Constraint::Length(zmq_status_width),
             ])
             .split(area);
 
-        if self.status == NodeStatus::Synchronizing {
-            let throbber = throbber_widgets_tui::Throbber::default()
-                .throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
-            frame.render_widget(throbber, status_bar_layout[0]);
+        // Throbber or empty block
+        if state.status == NodeStatus::Synchronizing {
+            let throbber =
+                Throbber::default().throbber_set(throbber_widgets_tui::QUADRANT_BLOCK_CRACK);
+            Widget::render(throbber, status_bar_layout[0], buf);
         } else {
-            frame.render_widget(
-                Block::new().style(Style::default().fg(Color::White)),
-                status_bar_layout[0],
-            );
+            Block::new()
+                .style(Style::default().fg(Color::White))
+                .render(status_bar_layout[0], buf);
         }
 
-        let message = if self.message.is_empty() {
-            &self.host
+        // Status message
+        let message = if state.message.is_empty() {
+            &state.host
         } else {
-            &self.message
+            &state.message
         };
+        Paragraph::new(format!("Node {} | {}", state.status, message))
+            .block(Block::new().padding(Padding::left(1)))
+            .style(Style::default().fg(Color::White))
+            .render(status_bar_layout[1], buf);
 
-        frame.render_widget(
-            Paragraph::new(format!("Node {} | {}", self.status, message))
-                .block(Block::new().padding(Padding::left(1)))
-                .style(Style::default().fg(Color::White)),
-            status_bar_layout[1],
-        );
-
-        let keys: Vec<_> = self.services.keys().cloned().collect();
-
+        // Service status
+        let keys: Vec<_> = state.services.keys().cloned().collect();
         if !keys.is_empty() {
-            let current_key = &keys[self.service_display_index];
-            let status = self
+            let current_key = &keys[state.service_display_index];
+            let status = state
                 .services
                 .get(current_key)
                 .unwrap_or(&NodeStatus::Offline);
-
-            frame.render_widget(
-                Paragraph::new(format!("{} {:?}", current_key, status))
-                    .style(get_status_style(status))
-                    .alignment(Alignment::Right),
-                status_bar_layout[2],
-            );
+            Paragraph::new(format!("{} {:?}", current_key, status))
+                .style(get_status_style(status))
+                .alignment(Alignment::Right)
+                .render(status_bar_layout[2], buf);
         }
     }
 }
