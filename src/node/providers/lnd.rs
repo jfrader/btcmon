@@ -196,7 +196,7 @@ impl LndNode {
                         state.last_hash_instant = Some(Instant::now());
                     }
 
-                    state.message = state.host.clone();
+                    state.message = "".to_string();
                     state.status = NodeStatus::Online;
                     state.height = info.block_height;
                     *state
@@ -216,9 +216,7 @@ impl LndNode {
 
                 Ok(())
             }
-            Err(e) => {
-                Err(anyhow::anyhow!("Request error: {}", e))
-            }
+            Err(e) => Err(anyhow::anyhow!("Request error: {}", e)),
         }
     }
 
@@ -284,21 +282,26 @@ impl NodeProvider for LndNode {
     async fn init(&mut self, thread: AppThread) -> Result<()> {
         let check_interval = Duration::from_secs(15);
 
-        let _ = thread.sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            state.message = "Initializing LND REST...".to_string();
-            state
-                .services
-                .insert("REST".to_string(), NodeStatus::Offline);
-            state.widget_state = Box::new(LndWidgetState {
-                title: "LND".to_string(),
-                alias: "".to_string(),
-                num_channels: 0,
-                capacity: 0,
-                local_balance: 0,
-                remote_balance: 0,
-            });
-            state
-        })));
+        let host = self.address.clone();
+
+        let _ = thread
+            .sender
+            .send(Event::NodeUpdate(Arc::new(move |mut state| {
+                state.host = host.clone();
+                state.message = "Initializing LND REST...".to_string();
+                state
+                    .services
+                    .insert("REST".to_string(), NodeStatus::Offline);
+                state.widget_state = Box::new(LndWidgetState {
+                    title: "LND".to_string(),
+                    alias: "".to_string(),
+                    num_channels: 0,
+                    capacity: 0,
+                    local_balance: 0,
+                    remote_balance: 0,
+                });
+                state
+            })));
 
         loop {
             if thread.token.is_cancelled() {

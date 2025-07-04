@@ -224,7 +224,7 @@ impl CoreLightning {
             }
 
             state.status = status;
-            state.message = message.clone();
+            state.message = "".to_string();
             state.height = height;
             state.widget_state = Box::new(CoreLightningWidgetState {
                 title: widget_state.title.clone(),
@@ -293,9 +293,12 @@ impl NodeProvider for CoreLightning {
     async fn init(&mut self, thread: AppThread) -> Result<()> {
         let check_interval = Duration::from_secs(15);
 
+        let host = self.rest_address.clone();
+
         let _ = thread
             .sender
             .send(Event::NodeUpdate(Arc::new(move |mut state| {
+                state.host = host.clone();
                 state.message = "Initializing CLN REST...".to_string();
                 state
                     .services

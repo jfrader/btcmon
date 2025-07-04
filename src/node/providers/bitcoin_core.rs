@@ -33,6 +33,7 @@ use crate::{
 pub struct BitcoinCore {
     rpc_client: Arc<bitcoincore_rpc::Client>,
     zmq_url: Option<String>,
+    host: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -169,7 +170,7 @@ impl BitcoinCore {
                     };
 
                     state.status = new_status;
-                    state.message = state.host.clone();
+                    state.message = "".to_string();
                     state.height = blockchain_info.blocks;
 
                     *state
@@ -371,26 +372,33 @@ impl NodeProvider for BitcoinCore {
         Self {
             rpc_client: Arc::new(rpc),
             zmq_url,
+            host: config.bitcoin_core.host.clone(),
         }
     }
 
     async fn init(&mut self, thread: AppThread) -> Result<()> {
         let check_interval = time::Duration::from_millis(15 * 1000);
 
-        let _ = thread.sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            state.widget_state = Box::new(BitcoinCoreWidgetState {
-                title: "Bitcoin Core".to_string(),
-                headers: 0,
-                last_hash: "".to_string(),
-            });
-            state
-                .services
-                .insert("RPC".to_string(), NodeStatus::Offline);
-            state
-                .services
-                .insert("ZMQ".to_string(), NodeStatus::Offline);
-            state
-        })));
+        let host = self.host.clone();
+
+        let _ = thread
+            .sender
+            .send(Event::NodeUpdate(Arc::new(move |mut state| {
+                state.host = host.clone();
+                state.message = "Initializing Bitcoin Core...".to_string();
+                state.widget_state = Box::new(BitcoinCoreWidgetState {
+                    title: "Bitcoin Core".to_string(),
+                    headers: 0,
+                    last_hash: "".to_string(),
+                });
+                state
+                    .services
+                    .insert("RPC".to_string(), NodeStatus::Offline);
+                state
+                    .services
+                    .insert("ZMQ".to_string(), NodeStatus::Offline);
+                state
+            })));
 
         let _ = self.get_blockchain_info(thread.sender.clone()).await;
 
