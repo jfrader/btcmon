@@ -1,10 +1,10 @@
 // app.rs
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tokio::time::{Instant, Duration};
 use std::str::FromStr;
 use std::{env, error};
 use tokio::sync::mpsc;
+use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -15,7 +15,7 @@ use crate::fees::{spawn_fees_checker, FeesState};
 use crate::node::{Node, NodeProvider, NodeState};
 use crate::price::providers::coinbase::PriceCoinbase;
 use crate::price::{spawn_price_checker, PriceCurrency, PriceState};
-use crate::widget::{DynamicState, DynamicStatefulWidget};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 
 /// Application result type.
 pub type AppResult<T> = std::result::Result<T, Box<dyn error::Error>>;
@@ -42,7 +42,7 @@ pub struct AppState {
     pub price: PriceState,
     pub fees: FeesState,
     pub node: NodeState,
-    pub widget: Box<dyn DynamicStatefulWidget>,
+    pub widget: Box<dyn DynamicNodeStatefulWidget>,
     pub widget_state: Box<dyn DynamicState>,
 }
 
@@ -55,7 +55,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(thread: AppThread, widget: Box<dyn DynamicStatefulWidget>, widget_state: Box<dyn DynamicState>) -> Self {
+    pub fn new(
+        thread: AppThread,
+        widget: Box<dyn DynamicNodeStatefulWidget>,
+        widget_state: Box<dyn DynamicState>,
+    ) -> Self {
         let (args, argv) = argmap::parse(env::args());
         let config = AppConfig::new(args, argv).unwrap();
         let cloned_thread = thread.clone();
