@@ -20,9 +20,14 @@ use tokio::time;
 use tokio::time::Instant;
 
 use crate::event::Event;
+use crate::node::NodeState;
 use crate::ui::get_status_style;
-use crate::widget::{DynamicState, DynamicStatefulWidget};
-use crate::{app::AppThread, config::AppConfig, node::{NodeProvider, NodeStatus}};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
+use crate::{
+    app::AppThread,
+    config::AppConfig,
+    node::{NodeProvider, NodeStatus},
+};
 
 #[derive(Clone)]
 pub struct BitcoinCore {
@@ -33,10 +38,8 @@ pub struct BitcoinCore {
 #[derive(Clone, Debug, Default)]
 pub struct BitcoinCoreWidgetState {
     pub title: String,
-    pub height: u64,
     pub headers: u64,
     pub last_hash: String,
-    pub status: NodeStatus,
 }
 
 impl DynamicState for BitcoinCoreWidgetState {
@@ -53,25 +56,31 @@ impl DynamicState for BitcoinCoreWidgetState {
 
 pub struct BitcoinCoreWidget;
 
-impl DynamicStatefulWidget for BitcoinCoreWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, state: &mut dyn DynamicState) {
+impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
+    fn render_dynamic(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        node_state: &NodeState,
+        state: &mut dyn DynamicState,
+    ) {
         let mut default = BitcoinCoreWidgetState::default();
         let state = state
             .as_any_mut()
             .downcast_mut::<BitcoinCoreWidgetState>()
             .unwrap_or(&mut default);
 
-        let style = get_status_style(&state.status);
-        let block_height = match state.status {
+        let style = get_status_style(&node_state.status);
+        let block_height = match node_state.status {
             NodeStatus::Synchronizing => Line::from(vec![
                 Span::raw("Block Height: "),
-                Span::styled(state.height.to_string(), Style::new().fg(Color::White)),
+                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
                 Span::raw("/"),
                 Span::styled(state.headers.to_string(), Style::new().fg(Color::Blue)),
             ]),
             _ => Line::from(vec![
                 Span::raw("Block Height: "),
-                Span::styled(state.height.to_string(), Style::new().fg(Color::White)),
+                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
             ]),
         };
 
@@ -160,8 +169,6 @@ impl BitcoinCore {
                     };
 
                     state.status = new_status;
-                    state.last_hash = blockchain_info.best_block_hash.to_string();
-                    state.headers = blockchain_info.headers;
                     state.height = blockchain_info.blocks;
 
                     *state
@@ -171,10 +178,8 @@ impl BitcoinCore {
 
                     state.widget_state = Box::new(BitcoinCoreWidgetState {
                         title: "Bitcoin Core".to_string(),
-                        height: blockchain_info.blocks,
                         headers: blockchain_info.headers,
                         last_hash: blockchain_info.best_block_hash.to_string(),
-                        status: new_status,
                     });
 
                     state
@@ -216,23 +221,25 @@ impl BitcoinCore {
                             bitcoincore_zmq::Message::HashBlock(hash, _) => {
                                 let hash = hash.to_string();
 
-                                let _ = sender.send(Event::NodeUpdate(Arc::new(move |current| {
-                                    let mut state = current.clone();
-                                    if state.last_hash != hash {
-                                        state.height += 1;
-                                        state.last_hash = hash.clone();
-                                        state.widget_state = Box::new(BitcoinCoreWidgetState {
-                                            title: state.widget_state.as_any().downcast_ref::<BitcoinCoreWidgetState>().unwrap().title.clone(),
-                                            height: state.height,
-                                            headers: state.headers,
-                                            last_hash: hash.clone(),
-                                            status: state.status,
-                                        });
-                                    }
+                                let _ =
+                                    sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
+                                        let widget_state = state
+                                            .widget_state
+                                            .as_any()
+                                            .downcast_ref::<BitcoinCoreWidgetState>()
+                                            .unwrap();
+                                        if widget_state.last_hash != hash {
+                                            state.height += 1;
+                                            state.widget_state = Box::new(BitcoinCoreWidgetState {
+                                                title: widget_state.title.clone(),
+                                                headers: widget_state.headers,
+                                                last_hash: hash.clone(),
+                                            });
+                                        }
 
-                                    state.last_hash_instant = Some(Instant::now());
-                                    state
-                                })));
+                                        state.last_hash_instant = Some(Instant::now());
+                                        state
+                                    })));
                             }
                             _ => {}
                         },
@@ -370,13 +377,10 @@ impl NodeProvider for BitcoinCore {
         let check_interval = time::Duration::from_millis(15 * 1000);
 
         let _ = thread.sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            state.title = "Bitcoin Core".to_string();
             state.widget_state = Box::new(BitcoinCoreWidgetState {
                 title: "Bitcoin Core".to_string(),
-                height: 0,
                 headers: 0,
                 last_hash: "".to_string(),
-                status: NodeStatus::Offline,
             });
             state
                 .services
@@ -416,7 +420,7 @@ impl NodeProvider for BitcoinCore {
         Ok(())
     }
 
-    fn widget(&self) -> Box<dyn DynamicStatefulWidget> {
+    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget> {
         Box::new(BitcoinCoreWidget)
     }
 

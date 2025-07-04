@@ -8,7 +8,7 @@ use btcmon::node::providers::core_lightning::{CoreLightning, CoreLightningWidget
 use btcmon::node::providers::lnd::{LndNode, LndWidget};
 use btcmon::node::NodeProvider;
 use btcmon::tui::Tui;
-use btcmon::widget::{DynamicState, DynamicStatefulWidget, DefaultWidgetState};
+use btcmon::widget::{DefaultWidgetState, DynamicNodeStatefulWidget, DynamicState};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::{env, io};
@@ -24,31 +24,34 @@ async fn main() -> AppResult<()> {
     let sender_clone = sender.clone();
     let thread = AppThread::new(sender_clone);
 
-    let (provider, widget, widget_state): (Box<dyn NodeProvider + Send + 'static>, Box<dyn DynamicStatefulWidget>, Box<dyn DynamicState>) =
-        match config.node.provider.as_str() {
-            "bitcoin_core" => (
-                Box::new(BitcoinCore::new(&config)),
-                Box::new(BitcoinCoreWidget),
-                Box::new(DefaultWidgetState),
-            ),
-            "core_lightning" => (
-                Box::new(CoreLightning::new(&config)),
-                Box::new(CoreLightningWidget),
-                Box::new(DefaultWidgetState),
-            ),
-            "lnd" => (
-                Box::new(LndNode::new(&config)),
-                Box::new(LndWidget),
-                Box::new(DefaultWidgetState),
-            ),
-            other => {
-                eprintln!(
-                    "Unknown node provider: '{}'. Expected one of: bitcoin_core, core_lightning, lnd",
-                    other
-                );
-                std::process::exit(1);
-            }
-        };
+    let (provider, widget, widget_state): (
+        Box<dyn NodeProvider + Send + 'static>,
+        Box<dyn DynamicNodeStatefulWidget>,
+        Box<dyn DynamicState>,
+    ) = match config.node.provider.as_str() {
+        "bitcoin_core" => (
+            Box::new(BitcoinCore::new(&config)),
+            Box::new(BitcoinCoreWidget),
+            Box::new(DefaultWidgetState),
+        ),
+        "core_lightning" => (
+            Box::new(CoreLightning::new(&config)),
+            Box::new(CoreLightningWidget),
+            Box::new(DefaultWidgetState),
+        ),
+        "lnd" => (
+            Box::new(LndNode::new(&config)),
+            Box::new(LndWidget),
+            Box::new(DefaultWidgetState),
+        ),
+        other => {
+            eprintln!(
+                "Unknown node provider: '{}'. Expected one of: bitcoin_core, core_lightning, lnd",
+                other
+            );
+            std::process::exit(1);
+        }
+    };
 
     let mut app = App::new(thread, widget, widget_state);
 
@@ -79,8 +82,8 @@ async fn main() -> AppResult<()> {
         match tui.events.next().await? {
             Event::Tick => app.tick(),
             Event::Key(key_event) => app.handle_key_events(key_event)?,
-            Event::Mouse(_) => {},
-            Event::Resize(_, _) => {},
+            Event::Mouse(_) => {}
+            Event::Resize(_, _) => {}
             Event::PriceUpdate(state) => app.handle_price_update(state),
             Event::FeeUpdate(state) => app.handle_fee_update(state),
             Event::NodeUpdate(update_fn) => {

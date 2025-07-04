@@ -1,16 +1,15 @@
-// node/providers/lnd.rs
-
 use super::super::{AppConfig, AppThread, NodeProvider, NodeStatus};
 use crate::event::Event;
+use crate::node::NodeState;
 use crate::ui::get_status_style;
-use crate::widget::{DynamicState, DynamicStatefulWidget};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Padding, Paragraph, Widget};
+use ratatui::widgets::{Block, BorderType, Gauge, Padding, Paragraph, Widget};
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -24,6 +23,19 @@ struct GetInfoResponse {
     pub num_active_channels: u64, // LND API field
 }
 
+#[derive(Debug, Deserialize)]
+struct ChannelResponse {
+    active: bool,
+    capacity: String,      // Total capacity in satoshis
+    local_balance: String, // Local balance in satoshis
+    remote_balance: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChannelsResponse {
+    channels: Vec<ChannelResponse>,
+}
+
 #[derive(Clone)]
 pub struct LndNode {
     address: String,
@@ -34,10 +46,11 @@ pub struct LndNode {
 #[derive(Clone, Debug, Default)]
 pub struct LndWidgetState {
     pub title: String,
-    pub height: u64,
     pub alias: String,
-    pub num_channels: u64, // Internal state for open channels
-    pub status: NodeStatus,
+    pub num_channels: u64,
+    pub capacity: u64,      // Total capacity in satoshis
+    pub local_balance: u64, // Local balance in satoshis
+    pub remote_balance: u64,
 }
 
 impl DynamicState for LndWidgetState {
@@ -54,19 +67,29 @@ impl DynamicState for LndWidgetState {
 
 pub struct LndWidget;
 
-impl DynamicStatefulWidget for LndWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, state: &mut dyn DynamicState) {
+impl DynamicNodeStatefulWidget for LndWidget {
+    fn render_dynamic(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        node_state: &NodeState,
+        state: &mut dyn DynamicState,
+    ) {
         let mut default = LndWidgetState::default();
         let state = state
             .as_any_mut()
             .downcast_mut::<LndWidgetState>()
             .unwrap_or(&mut default);
 
-        let style = get_status_style(&state.status);
+        let style = get_status_style(&node_state.status);
         let text = vec![
             Line::from(vec![
                 Span::raw("Block Height: "),
-                Span::styled(state.height.to_string(), Style::new().fg(Color::White)),
+                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Alias: "),
+                Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Open Channels: "),
@@ -75,19 +98,35 @@ impl DynamicStatefulWidget for LndWidget {
                     Style::new().fg(Color::White),
                 ),
             ]),
-            "------".into(),
+            Line::raw(""), // Spacer
         ];
 
-        Paragraph::new(text)
-            .block(
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .title(vec![state.title.clone(), state.alias.clone()].join(" | "))
-                    .title_alignment(Alignment::Center)
-                    .border_type(BorderType::Plain)
-                    .style(style),
-            )
-            .render(area, buf);
+        let block = Block::bordered()
+            .padding(Padding::left(1))
+            .title(vec![state.title.clone(), state.alias.clone()].join(" | "))
+            .title_alignment(Alignment::Center)
+            .border_type(BorderType::Plain)
+            .style(style);
+
+        let inner_area = block.inner(area);
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(text.len() as u16), Constraint::Length(3)])
+            .split(inner_area);
+
+        Paragraph::new(text).render(layout[0], buf);
+
+        let gauge = Gauge::default()
+            .gauge_style(Style::default().fg(Color::Green))
+            .ratio(if state.capacity > 0 {
+                state.local_balance as f64 / state.capacity as f64
+            } else {
+                0.0
+            })
+            .label(format!("local {} sats / remote {} sats", state.local_balance, state.remote_balance));
+
+        gauge.render(layout[1], buf);
+        block.render(area, buf);
     }
 }
 
@@ -107,18 +146,20 @@ impl LndNode {
                 let status = resp.status();
                 if !status.is_success() {
                     let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                        let num_channels = state
+                        let widget_state = state
                             .widget_state
                             .as_any()
                             .downcast_ref::<LndWidgetState>()
-                            .map_or(0, |s| s.num_channels);
+                            .unwrap();
+
                         state.message = format!("LND REST error: HTTP {}", status);
                         state.widget_state = Box::new(LndWidgetState {
-                            title: state.title.clone(),
-                            height: state.height,
-                            alias: state.alias.clone(),
-                            num_channels, // Preserve from previous state
-                            status: NodeStatus::Offline,
+                            title: widget_state.title.clone(),
+                            alias: widget_state.alias.clone(),
+                            num_channels: widget_state.num_channels,
+                            capacity: widget_state.capacity,
+                            local_balance: widget_state.local_balance,
+                            remote_balance: widget_state.remote_balance,
                         });
                         state
                     })));
@@ -126,26 +167,57 @@ impl LndNode {
                 }
 
                 let info = resp.json::<GetInfoResponse>().await?;
+                let (num_channels, capacity, local_balance, remote_balance) =
+                    match self.get_channels().await {
+                        Ok(channels) => {
+                            let active_channels = channels
+                                .channels
+                                .into_iter()
+                                .filter(|c| c.active)
+                                .collect::<Vec<_>>();
+                            let num = active_channels.len() as u64;
+                            let capacity = active_channels
+                                .iter()
+                                .map(|c| c.capacity.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            let balance = active_channels
+                                .iter()
+                                .map(|c| c.local_balance.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            let remote_balance = active_channels
+                                .iter()
+                                .map(|c| c.remote_balance.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            (num, capacity, balance, remote_balance)
+                        }
+                        Err(_) => (info.num_active_channels, 0, 0, 0),
+                    };
 
                 let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
+                    let widget_state = state
+                        .widget_state
+                        .as_any()
+                        .downcast_ref::<LndWidgetState>()
+                        .unwrap();
+
                     if state.height > 0 && state.height < info.block_height {
                         state.last_hash_instant = Some(Instant::now());
                     }
-                    state.message = "".to_string();
+
+                    state.message = state.host.clone();
                     state.status = NodeStatus::Online;
                     state.height = info.block_height;
-                    state.last_hash = "N/A".to_string();
-                    state.alias = info.alias.clone();
                     *state
                         .services
                         .entry("REST".to_string())
                         .or_insert(NodeStatus::Online) = NodeStatus::Online;
                     state.widget_state = Box::new(LndWidgetState {
-                        title: state.title.clone(),
-                        height: info.block_height,
+                        title: widget_state.title.clone(),
                         alias: info.alias.clone(),
-                        num_channels: info.num_active_channels,
-                        status: NodeStatus::Online,
+                        num_channels,
+                        capacity,
+                        local_balance,
+                        remote_balance,
                     });
                     state
                 })));
@@ -154,23 +226,48 @@ impl LndNode {
             }
             Err(e) => {
                 let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                    let num_channels = state
+                    let widget_state = state
                         .widget_state
                         .as_any()
                         .downcast_ref::<LndWidgetState>()
-                        .map_or(0, |s| s.num_channels);
+                        .unwrap();
+
                     state.widget_state = Box::new(LndWidgetState {
-                        title: state.title.clone(),
-                        height: state.height,
-                        alias: state.alias.clone(),
-                        num_channels, // Preserve from previous state
-                        status: NodeStatus::Offline,
+                        title: widget_state.title.clone(),
+                        alias: widget_state.alias.clone(),
+                        num_channels: widget_state.num_channels,
+                        capacity: widget_state.capacity,
+                        local_balance: widget_state.local_balance,
+                        remote_balance: widget_state.remote_balance,
                     });
                     state
                 })));
-                Err(anyhow::anyhow!("Request error: {:?}", e))
+                Err(anyhow::anyhow!("Request error: {}", e))
             }
         }
+    }
+
+    async fn get_channels(&self) -> Result<ChannelsResponse> {
+        let url = format!("{}/v1/channels", self.address);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Grpc-Metadata-macaroon", &self.macaroon)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "LND channels returned {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let channels: ChannelsResponse = resp.json().await?;
+        Ok(channels)
     }
 
     async fn check_node_status(&self, sender: UnboundedSender<Event>) -> Result<()> {
@@ -178,22 +275,25 @@ impl LndNode {
             Ok(_) => Ok(()),
             Err(e) => {
                 let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                    let num_channels = state
+                    let widget_state = state
                         .widget_state
                         .as_any()
                         .downcast_ref::<LndWidgetState>()
-                        .map_or(0, |s| s.num_channels);
+                        .unwrap();
+
                     state.status = NodeStatus::Offline;
                     *state
                         .services
                         .entry("REST".to_string())
                         .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
+
                     state.widget_state = Box::new(LndWidgetState {
-                        title: state.title.clone(),
-                        height: state.height,
-                        alias: state.alias.clone(),
-                        num_channels, // Preserve from previous state
-                        status: NodeStatus::Offline,
+                        title: widget_state.title.clone(),
+                        alias: widget_state.alias.clone(),
+                        num_channels: widget_state.num_channels,
+                        capacity: widget_state.capacity,
+                        local_balance: widget_state.local_balance,
+                        remote_balance: widget_state.remote_balance,
                     });
                     state
                 })));
@@ -224,17 +324,17 @@ impl NodeProvider for LndNode {
         let check_interval = Duration::from_secs(15);
 
         let _ = thread.sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            state.title = "LND".to_string();
             state.message = "Initializing LND REST...".to_string();
             state
                 .services
                 .insert("REST".to_string(), NodeStatus::Offline);
             state.widget_state = Box::new(LndWidgetState {
                 title: "LND".to_string(),
-                height: 0,
                 alias: "".to_string(),
                 num_channels: 0,
-                status: NodeStatus::Offline,
+                capacity: 0,
+                local_balance: 0,
+                remote_balance: 0,
             });
             state
         })));
@@ -252,7 +352,7 @@ impl NodeProvider for LndNode {
         Ok(())
     }
 
-    fn widget(&self) -> Box<dyn DynamicStatefulWidget> {
+    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget> {
         Box::new(LndWidget)
     }
 

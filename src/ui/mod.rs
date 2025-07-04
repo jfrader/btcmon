@@ -77,7 +77,12 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
         _ => {}
     }
 
-    state.widget.render_dynamic(*top_panel, frame.buffer_mut(), &mut *state.widget_state);
+    state.widget.render_dynamic(
+        *top_panel,
+        frame.buffer_mut(),
+        &node_state,
+        &mut *state.widget_state,
+    );
     node_state.widget_state = state.widget_state.clone_box();
 
     node_state.draw_status(frame, *status_panel);

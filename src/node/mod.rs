@@ -2,7 +2,7 @@
 
 pub mod providers;
 
-use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState, DynamicStatefulWidget}};
+use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState, DynamicNodeStatefulWidget}};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::{
@@ -57,14 +57,10 @@ pub enum NodeEvent {
 
 #[derive(Debug)]
 pub struct NodeState {
-    pub title: String,
-    pub alias: String,
     pub host: String,
     pub message: String,
     pub status: NodeStatus,
     pub height: u64,
-    pub headers: u64,
-    pub last_hash: String,
     pub last_hash_instant: Option<Instant>,
     pub services: HashMap<String, NodeStatus>,
     pub service_display_index: usize,
@@ -75,14 +71,10 @@ pub struct NodeState {
 impl Clone for NodeState {
     fn clone(&self) -> Self {
         Self {
-            title: self.title.clone(),
-            alias: self.alias.clone(),
             host: self.host.clone(),
             message: self.message.clone(),
             status: self.status,
             height: self.height,
-            headers: self.headers,
-            last_hash: self.last_hash.clone(),
             last_hash_instant: self.last_hash_instant,
             services: self.services.clone(),
             last_service_switch: self.last_service_switch,
@@ -95,14 +87,10 @@ impl Clone for NodeState {
 impl Default for NodeState {
     fn default() -> Self {
         Self {
-            title: "".to_string(),
-            alias: "".to_string(),
             host: "".to_string(),
             message: "".to_string(),
             status: NodeStatus::Offline,
             height: 0,
-            headers: 0,
-            last_hash: "".to_string(),
             last_hash_instant: None,
             services: HashMap::new(),
             last_service_switch: None,
@@ -151,7 +139,7 @@ pub trait NodeProvider {
     where
         Self: Sized;
     async fn init(&mut self, thread: AppThread) -> Result<()>;
-    fn widget(&self) -> Box<dyn DynamicStatefulWidget>;
+    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget>;
     fn widget_state(&self) -> Box<dyn DynamicState>;
 }
 
