@@ -34,15 +34,13 @@ impl DrawStatus for NodeState {
         }
 
         let message = if self.message.is_empty() {
-            "".to_string()
+            &self.host
         } else {
-            vec!["|".to_string(), self.message.clone()]
-                .join(" ")
-                .to_string()
+            &self.message
         };
 
         frame.render_widget(
-            Paragraph::new(format!("Node {} | {} {}", self.status, self.host, message))
+            Paragraph::new(format!("Node {} | {}", self.status, message))
                 .block(Block::new().padding(Padding::left(1)))
                 .style(Style::default().fg(Color::White)),
             status_bar_layout[1],

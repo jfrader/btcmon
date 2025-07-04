@@ -242,8 +242,7 @@ impl BitcoinCore {
                         },
                         Ok(SocketMessage::Event(event)) => match event.event {
                             SocketEvent::Disconnected { .. } => {
-                                let _ = sender.send(Event::NodeUpdate(Arc::new(|current| {
-                                    let mut state = current.clone();
+                                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
                                     *state
                                         .services
                                         .entry("ZMQ".to_string())
@@ -253,8 +252,7 @@ impl BitcoinCore {
                                 })));
                             }
                             SocketEvent::HandshakeSucceeded => {
-                                let _ = sender.send(Event::NodeUpdate(Arc::new(|current| {
-                                    let mut state = current.clone();
+                                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
                                     *state
                                         .services
                                         .entry("ZMQ".to_string())
@@ -274,8 +272,7 @@ impl BitcoinCore {
                 }
             }
 
-            let _ = sender.send(Event::NodeUpdate(Arc::new(|current| {
-                let mut state = current.clone();
+            let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
                 *state
                     .services
                     .entry("ZMQ".to_string())
