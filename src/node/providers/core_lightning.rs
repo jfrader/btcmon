@@ -2,7 +2,7 @@ use super::super::{AppConfig, AppThread, NodeProvider, NodeStatus};
 use crate::event::Event;
 use crate::node::NodeState;
 use crate::ui::get_status_style;
-use crate::widget::{DynamicState, DynamicNodeStatefulWidget};
+use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
@@ -72,7 +72,13 @@ impl DynamicState for CoreLightningWidgetState {
 pub struct CoreLightningWidget;
 
 impl DynamicNodeStatefulWidget for CoreLightningWidget {
-    fn render_dynamic(&self, area: Rect, buf: &mut Buffer, node_state: &NodeState, state: &mut dyn DynamicState) {
+    fn render_dynamic(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        node_state: &NodeState,
+        state: &mut dyn DynamicState,
+    ) {
         let mut default = CoreLightningWidgetState::default();
         let state = state
             .as_any_mut()
@@ -91,7 +97,10 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
             ]),
             Line::from(vec![
                 Span::raw("Open Channels: "),
-                Span::styled(state.num_channels.to_string(), Style::new().fg(Color::White)),
+                Span::styled(
+                    state.num_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::raw(""), // Spacer
         ];
@@ -112,13 +121,20 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
         Paragraph::new(text).render(layout[0], buf);
 
         let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(Color::Green))
+            .gauge_style(Color::Green)
+            .label(Span::styled(
+                format!(
+                    " local {} sats / remote {} sats ",
+                    state.local_balance,
+                    state.total_capacity - state.local_balance
+                ),
+                Style::new().bg(Color::Black),
+            ))
             .ratio(if state.total_capacity > 0 {
                 state.local_balance as f64 / state.total_capacity as f64
             } else {
                 0.0
-            })
-            .label(format!("local {} sats / remote {} sats", state.local_balance, state.total_capacity - state.local_balance));
+            });
 
         gauge.render(layout[1], buf);
         block.render(area, buf);
@@ -137,56 +153,62 @@ impl CoreLightning {
             .send()
             .await;
 
-        let (status, message, height, alias, num_channels, total_capacity, local_balance) = match info_resp {
-            Ok(resp) => {
-                let status_code = resp.status();
-                if !status_code.is_success() {
-                    (
-                        NodeStatus::Offline,
-                        format!("CLN REST HTTP error: {}", status_code),
-                        0,
-                        String::new(),
-                        0,
-                        0,
-                        0,
-                    )
-                } else {
-                    let info = resp.json::<GetInfoResponse>().await?;
-                    let (num_channels, total_capacity, local_balance, error) = match self.get_channels().await {
-                        Ok(peers) => {
-                            let channels = peers
-                                .peers
-                                .iter()
-                                .flat_map(|peer| &peer.channels)
-                                .filter(|channel| channel.state == "CHANNELD_NORMAL");
-                            let num = channels.clone().count() as u64;
-                            let capacity = channels.clone().map(|c| c.msatoshi_total / 1000).sum::<u64>();
-                            let balance = channels.map(|c| c.msatoshi_to_us / 1000).sum::<u64>();
-                            (num, capacity, balance, String::new())
-                        }
-                        Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
-                    };
-                    (
-                        NodeStatus::Online,
-                        error,
-                        info.blockheight,
-                        info.alias,
-                        num_channels,
-                        total_capacity,
-                        local_balance,
-                    )
+        let (status, message, height, alias, num_channels, total_capacity, local_balance) =
+            match info_resp {
+                Ok(resp) => {
+                    let status_code = resp.status();
+                    if !status_code.is_success() {
+                        (
+                            NodeStatus::Offline,
+                            format!("CLN REST HTTP error: {}", status_code),
+                            0,
+                            String::new(),
+                            0,
+                            0,
+                            0,
+                        )
+                    } else {
+                        let info = resp.json::<GetInfoResponse>().await?;
+                        let (num_channels, total_capacity, local_balance, error) =
+                            match self.get_channels().await {
+                                Ok(peers) => {
+                                    let channels = peers
+                                        .peers
+                                        .iter()
+                                        .flat_map(|peer| &peer.channels)
+                                        .filter(|channel| channel.state == "CHANNELD_NORMAL");
+                                    let num = channels.clone().count() as u64;
+                                    let capacity = channels
+                                        .clone()
+                                        .map(|c| c.msatoshi_total / 1000)
+                                        .sum::<u64>();
+                                    let balance =
+                                        channels.map(|c| c.msatoshi_to_us / 1000).sum::<u64>();
+                                    (num, capacity, balance, String::new())
+                                }
+                                Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
+                            };
+                        (
+                            NodeStatus::Online,
+                            error,
+                            info.blockheight,
+                            info.alias,
+                            num_channels,
+                            total_capacity,
+                            local_balance,
+                        )
+                    }
                 }
-            }
-            Err(e) => (
-                NodeStatus::Offline,
-                format!("Request error: {}", e),
-                0,
-                String::new(),
-                0,
-                0,
-                0,
-            ),
-        };
+                Err(e) => (
+                    NodeStatus::Offline,
+                    format!("Request error: {}", e),
+                    0,
+                    String::new(),
+                    0,
+                    0,
+                    0,
+                ),
+            };
 
         let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
             let widget_state = state
@@ -195,13 +217,15 @@ impl CoreLightning {
                 .downcast_ref::<CoreLightningWidgetState>()
                 .unwrap();
 
+            *state.services.entry("REST".to_string()).or_insert(status) = status;
+
             if state.height > 0 && state.height < height {
                 state.last_hash_instant = Some(Instant::now());
             }
+
             state.status = status;
             state.message = message.clone();
             state.height = height;
-            *state.services.entry("REST".to_string()).or_insert(status) = status;
             state.widget_state = Box::new(CoreLightningWidgetState {
                 title: widget_state.title.clone(),
                 alias: alias.clone(),
@@ -297,13 +321,5 @@ impl NodeProvider for CoreLightning {
         }
 
         Ok(())
-    }
-
-    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget> {
-        Box::new(CoreLightningWidget)
-    }
-
-    fn widget_state(&self) -> Box<dyn DynamicState> {
-        Box::new(CoreLightningWidgetState::default())
     }
 }

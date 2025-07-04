@@ -117,13 +117,19 @@ impl DynamicNodeStatefulWidget for LndWidget {
         Paragraph::new(text).render(layout[0], buf);
 
         let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(Color::Green))
+            .gauge_style(Color::Green)
+            .label(Span::styled(
+                format!(
+                    " local {} sats / remote {} sats ",
+                    state.local_balance, state.remote_balance
+                ),
+                Style::new().bg(Color::Black),
+            ))
             .ratio(if state.capacity > 0 {
                 state.local_balance as f64 / state.capacity as f64
             } else {
                 0.0
-            })
-            .label(format!("local {} sats / remote {} sats", state.local_balance, state.remote_balance));
+            });
 
         gauge.render(layout[1], buf);
         block.render(area, buf);
@@ -350,13 +356,5 @@ impl NodeProvider for LndNode {
         }
 
         Ok(())
-    }
-
-    fn widget(&self) -> Box<dyn DynamicNodeStatefulWidget> {
-        Box::new(LndWidget)
-    }
-
-    fn widget_state(&self) -> Box<dyn DynamicState> {
-        Box::new(LndWidgetState::default())
     }
 }
