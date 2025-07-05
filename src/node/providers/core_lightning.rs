@@ -30,28 +30,23 @@ struct GetInfoResponse {
 #[derive(Debug, Deserialize)]
 struct Htlc {
     // direction: String,
-    status: String,
+    // state: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct Channel {
     state: String,
-    #[serde(default, alias = "msatoshi_total", alias = "total_msat")]
-    msatoshi_total: u64,
-    #[serde(default, alias = "msatoshi_to_us", alias = "to_us_msat")]
-    msatoshi_to_us: u64,
+    #[serde(default, alias = "total_msat")]
+    total_msat: u64,
+    #[serde(default, alias = "to_us_msat")]
+    to_us_msat: u64,
     #[serde(default)]
     htlcs: Vec<Htlc>, // HTLCs for the channel
 }
 
 #[derive(Debug, Deserialize)]
-struct Peer {
+struct PeerChannelsResponse {
     channels: Vec<Channel>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PeersResponse {
-    peers: Vec<Peer>,
 }
 
 #[derive(Clone)]
@@ -199,8 +194,8 @@ impl CoreLightning {
         Ok(response.json::<GetInfoResponse>().await?)
     }
 
-    async fn fetch_channels(&self) -> Result<PeersResponse> {
-        let url = format!("{}/v1/listpeers", self.rest_address);
+    async fn fetch_channels(&self) -> Result<PeerChannelsResponse> {
+        let url = format!("{}/v1/listpeerchannels", self.rest_address);
         let response = self
             .client
             .post(&url)
@@ -221,7 +216,7 @@ impl CoreLightning {
             ));
         }
 
-        Ok(response.json::<PeersResponse>().await?)
+        Ok(response.json::<PeerChannelsResponse>().await?)
     }
 
     async fn get_node_info(&self) -> Result<NodeInfo> {
@@ -244,32 +239,32 @@ impl CoreLightning {
             }
         };
 
-        let (total_capacity, local_balance, num_pending_htlcs, message) = match self.fetch_channels().await {
-            Ok(peers) => {
-                let channels = peers.peers.iter().flat_map(|peer| &peer.channels);
+        let (total_capacity, local_balance, num_pending_htlcs, message) =
+            match self.fetch_channels().await {
+                Ok(peers) => {
+                    let channels = &peers.channels;
 
-                let capacity = channels
-                    .clone()
-                    .filter(|channel| channel.state == "CHANNELD_NORMAL")
-                    .map(|c| c.msatoshi_total / 1000)
-                    .sum::<u64>();
+                    let capacity = channels
+                        .into_iter()
+                        .filter(|channel| channel.state == "CHANNELD_NORMAL")
+                        .map(|c| c.total_msat / 1000)
+                        .sum::<u64>();
 
-                let balance = channels
-                    .clone()
-                    .filter(|channel| channel.state == "CHANNELD_NORMAL")
-                    .map(|c| c.msatoshi_to_us / 1000)
-                    .sum::<u64>();
+                    let balance = channels
+                        .into_iter()
+                        .filter(|channel| channel.state == "CHANNELD_NORMAL")
+                        .map(|c| c.to_us_msat / 1000)
+                        .sum::<u64>();
 
-                let pending_htlcs = channels
-                    .clone()
-                    .flat_map(|channel| &channel.htlcs)
-                    .filter(|htlc| htlc.status == "offered" || htlc.status == "received")
-                    .count() as u32;
+                    let pending_htlcs = channels
+                        .into_iter()
+                        .flat_map(|channel| &channel.htlcs)
+                        .count() as u32;
 
-                (capacity, balance, pending_htlcs, String::new())
-            }
-            Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
-        };
+                    (capacity, balance, pending_htlcs, String::new())
+                }
+                Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
+            };
 
         Ok(NodeInfo {
             status: NodeStatus::Online,
