@@ -3,7 +3,11 @@
 pub mod providers;
 pub mod widgets;
 
-use crate::{app::AppThread, config::AppConfig, widget::{DefaultWidgetState, DynamicState}};
+use crate::{
+    app::AppThread,
+    config::AppConfig,
+    widget::{DefaultWidgetState, DynamicState},
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use ratatui::{
@@ -23,7 +27,7 @@ use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     time::Instant,
 };
-use tui_popup::{Popup, SizedWrapper};
+use tui_widgets::popup::{Popup, SizedWrapper};
 
 pub struct NodeChannel<E> {
     pub sender: UnboundedSender<E>,
@@ -128,9 +132,10 @@ impl NodeState {
             height: 4,
         };
 
-        let popup =
-            Popup::new(" New block! ", sized_paragraph).style(Style::new().fg(Color::White));
-        frame.render_widget(&popup, frame.size());
+        let popup = Popup::new(sized_paragraph)
+            .title(" New block! ")
+            .style(Style::new().fg(Color::White));
+        frame.render_widget(&popup, frame.area());
     }
 }
 

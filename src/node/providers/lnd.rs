@@ -30,11 +30,19 @@ struct GetInfoResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct Htlc {
+    // incoming: bool,
+    // Add other relevant fields based on LND API
+}
+
+#[derive(Debug, Deserialize)]
 struct ChannelResponse {
     active: bool,
     capacity: String,
     local_balance: String,
     remote_balance: String,
+    #[serde(default)]
+    pending_htlcs: Option<Vec<Htlc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +70,7 @@ pub struct LndWidgetState {
     pub remote_balance: u64,
     pub synced_to_chain: bool,
     pub synced_to_graph: bool,
+    pub num_pending_htlcs: u64,
 }
 
 impl DynamicState for LndWidgetState {
@@ -103,6 +112,10 @@ impl DynamicNodeStatefulWidget for LndWidget {
             Line::from(vec![
                 Span::raw("Alias: "),
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Synced to Bitcoin: "),
@@ -148,8 +161,11 @@ impl DynamicNodeStatefulWidget for LndWidget {
                 ),
             ]),
             Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Pending HTLCs: "),
+                Span::styled(
+                    state.num_pending_htlcs.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::raw(""),
         ];
@@ -166,6 +182,29 @@ impl DynamicNodeStatefulWidget for LndWidget {
 }
 
 impl LndNode {
+    async fn get_channels(&self) -> Result<ChannelsResponse> {
+        let url = format!("{}/v1/channels", self.address);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Grpc-Metadata-macaroon", &self.macaroon)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "LND channels returned {}: {}",
+                status,
+                body
+            ));
+        }
+
+        let channels: ChannelsResponse = resp.json().await?;
+        Ok(channels)
+    }
+
     async fn get_node_info(&self, sender: UnboundedSender<Event>) -> Result<()> {
         let url = format!("{}/v1/getinfo", self.address);
 
@@ -188,29 +227,36 @@ impl LndNode {
                 }
 
                 let info = resp.json::<GetInfoResponse>().await?;
-                let (capacity, local_balance, remote_balance) = match self.get_channels().await {
-                    Ok(channels) => {
-                        let active_channels = channels
-                            .channels
-                            .iter()
-                            .filter(|c| c.active)
-                            .collect::<Vec<_>>();
-                        let capacity = active_channels
-                            .iter()
-                            .map(|c| c.capacity.parse().unwrap_or(0))
-                            .sum::<u64>();
-                        let local_balance = active_channels
-                            .iter()
-                            .map(|c| c.local_balance.parse().unwrap_or(0))
-                            .sum::<u64>();
-                        let remote_balance = active_channels
-                            .iter()
-                            .map(|c| c.remote_balance.parse().unwrap_or(0))
-                            .sum::<u64>();
-                        (capacity, local_balance, remote_balance)
-                    }
-                    Err(_) => (0, 0, 0),
-                };
+                let empty_htlcs = vec![];
+                let (capacity, local_balance, remote_balance, num_pending_htlcs) =
+                    match self.get_channels().await {
+                        Ok(channels) => {
+                            let active_channels = channels
+                                .channels
+                                .iter()
+                                .filter(|c| c.active)
+                                .collect::<Vec<_>>();
+                            let capacity = active_channels
+                                .iter()
+                                .map(|c| c.capacity.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            let local_balance = active_channels
+                                .iter()
+                                .map(|c| c.local_balance.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            let remote_balance = active_channels
+                                .iter()
+                                .map(|c| c.remote_balance.parse().unwrap_or(0))
+                                .sum::<u64>();
+                            let pending_htlcs = channels
+                                .channels
+                                .iter()
+                                .flat_map(|c| c.pending_htlcs.as_ref().unwrap_or(&empty_htlcs))
+                                .count() as u64;
+                            (capacity, local_balance, remote_balance, pending_htlcs)
+                        }
+                        Err(_) => (0, 0, 0, 0),
+                    };
 
                 let new_status = if info.synced_to_chain && info.synced_to_graph {
                     NodeStatus::Online
@@ -248,6 +294,7 @@ impl LndNode {
                         remote_balance,
                         synced_to_chain: info.synced_to_chain,
                         synced_to_graph: info.synced_to_graph,
+                        num_pending_htlcs,
                     });
                     state
                 })));
@@ -267,30 +314,6 @@ impl LndNode {
             }
         }
     }
-
-    async fn get_channels(&self) -> Result<ChannelsResponse> {
-        let url = format!("{}/v1/channels", self.address);
-        let resp = self
-            .client
-            .get(&url)
-            .header("Grpc-Metadata-macaroon", &self.macaroon)
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!(
-                "LND channels returned {}: {}",
-                status,
-                body
-            ));
-        }
-
-        let channels: ChannelsResponse = resp.json().await?;
-        Ok(channels)
-    }
-
     async fn check_node_status(&self, sender: UnboundedSender<Event>) -> Result<()> {
         self.get_node_info(sender).await
     }
@@ -338,6 +361,7 @@ impl NodeProvider for LndNode {
                     remote_balance: 0,
                     synced_to_chain: false,
                     synced_to_graph: false,
+                    num_pending_htlcs: 0,
                 });
                 state
             })));

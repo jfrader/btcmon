@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 crossterm = { version = "0.27.0", features = ["event-stream"] }
 futures = "0.3.30"
-ratatui = "0.27.0"
+ratatui = "0.29.0"
 tokio = { version = "1.35.1", features = ["full"] }
 bitcoincore-rpc = "0.19.0"
 hex = { version = "0.4.3", features = ["serde"] }
@@ -17,9 +17,7 @@ argmap = "1.1.2"
 config = "0.14.0"
 serde_derive = "1.0"
 home = "0.5.9"
-throbber-widgets-tui = "0.6.0"
-tui-popup = "0.3.3"
-tui-big-text = "0.4.5"
+throbber-widgets-tui = "0.8.0"
 bitcoin = "0.32.2"
 tokio-util = { version = "0.7.11", features = ["rt"] }
 reqwest = { version = "0.12.5", features = ["json"] }
@@ -28,3 +26,4 @@ async-trait = "0.1.81"
 anyhow = "1.0.86"
 zmq = "0.10.0"
 bitcoincore-zmq = { version = "1.5.1", features = ["async"] }
+tui-widgets = { version = "0.4.1", features = ["tui-big-text", "tui-popup"] }

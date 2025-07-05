@@ -28,12 +28,20 @@ struct GetInfoResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct Htlc {
+    // direction: String,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct Channel {
     state: String,
     #[serde(default, alias = "msatoshi_total", alias = "total_msat")]
     msatoshi_total: u64,
     #[serde(default, alias = "msatoshi_to_us", alias = "to_us_msat")]
     msatoshi_to_us: u64,
+    #[serde(default)]
+    htlcs: Vec<Htlc>, // HTLCs for the channel
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +71,7 @@ pub struct CoreLightningWidgetState {
     pub num_inactive_channels: u32,
     pub total_capacity: u64,
     pub local_balance: u64,
+    pub num_pending_htlcs: u32, // New field for pending HTLCs
 }
 
 impl DynamicState for CoreLightningWidgetState {
@@ -98,6 +107,10 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
                 Span::raw("Active Channels: "),
                 Span::styled(
                     state.num_active_channels.to_string(),
@@ -119,8 +132,11 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                 ),
             ]),
             Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Pending HTLCs: "),
+                Span::styled(
+                    state.num_pending_htlcs.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::raw(""),
         ];
@@ -148,6 +164,7 @@ struct NodeInfo {
     num_inactive_channels: u32,
     total_capacity: u64,
     local_balance: u64,
+    num_pending_htlcs: u32,
 }
 
 impl CoreLightning {
@@ -222,11 +239,12 @@ impl CoreLightning {
                     num_inactive_channels: 0,
                     total_capacity: 0,
                     local_balance: 0,
+                    num_pending_htlcs: 0,
                 });
             }
         };
 
-        let (total_capacity, local_balance, message) = match self.fetch_channels().await {
+        let (total_capacity, local_balance, num_pending_htlcs, message) = match self.fetch_channels().await {
             Ok(peers) => {
                 let channels = peers.peers.iter().flat_map(|peer| &peer.channels);
 
@@ -237,13 +255,20 @@ impl CoreLightning {
                     .sum::<u64>();
 
                 let balance = channels
+                    .clone()
                     .filter(|channel| channel.state == "CHANNELD_NORMAL")
                     .map(|c| c.msatoshi_to_us / 1000)
                     .sum::<u64>();
 
-                (capacity, balance, String::new())
+                let pending_htlcs = channels
+                    .clone()
+                    .flat_map(|channel| &channel.htlcs)
+                    .filter(|htlc| htlc.status == "offered" || htlc.status == "received")
+                    .count() as u32;
+
+                (capacity, balance, pending_htlcs, String::new())
             }
-            Err(e) => (0, 0, format!("Channels fetch error: {}", e)),
+            Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
         };
 
         Ok(NodeInfo {
@@ -257,6 +282,7 @@ impl CoreLightning {
             num_inactive_channels: info.num_inactive_channels,
             total_capacity,
             local_balance,
+            num_pending_htlcs,
         })
     }
 
@@ -288,6 +314,7 @@ impl CoreLightning {
                 num_inactive_channels: node_info.num_inactive_channels,
                 total_capacity: node_info.total_capacity,
                 local_balance: node_info.local_balance,
+                num_pending_htlcs: node_info.num_pending_htlcs,
             });
 
             state

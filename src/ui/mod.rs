@@ -27,8 +27,8 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
         if config.price.enabled | config.fees.enabled {
             (
                 vec![
-                    Constraint::Length(frame.size().height / 2),
-                    Constraint::Length(frame.size().height / 2 - 1),
+                    Constraint::Length(frame.area().height / 2),
+                    Constraint::Length(frame.area().height / 2 - 1),
                     Constraint::Max(1),
                 ],
                 2,
@@ -36,7 +36,7 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
         } else {
             (
                 vec![
-                    Constraint::Length(frame.size().height - 1),
+                    Constraint::Length(frame.area().height - 1),
                     Constraint::Max(1),
                 ],
                 1,
@@ -46,7 +46,7 @@ pub fn render(config: &AppConfig, state: &mut AppState, frame: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(layout_constraints)
-        .split(frame.size());
+        .split(frame.area());
 
     let status_panel = &main_layout[status_panel_i];
     let top_panel = &main_layout[0];

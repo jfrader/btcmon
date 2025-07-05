@@ -2,7 +2,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget};
-use tui_big_text::{BigText, PixelSize};
+use tui_widgets::big_text::{BigText, PixelSize};
 
 use crate::app::AppState;
 use crate::ui::get_status_style;
@@ -58,8 +58,7 @@ impl StatefulWidget for PriceWidget {
                     .pixel_size(PixelSize::Sextant)
                     .style(style)
                     .lines(price_with_currency_lines)
-                    .build()
-                    .unwrap();
+                    .build();
 
                 big_text.render(price_block_area, buf);
 
@@ -78,8 +77,7 @@ impl StatefulWidget for PriceWidget {
                     .pixel_size(PixelSize::Sextant)
                     .style(style)
                     .lines(price_lines)
-                    .build()
-                    .unwrap();
+                    .build();
 
                 big_text.render(price_block_area, buf);
 
