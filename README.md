@@ -25,6 +25,39 @@ btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/
 
 See the [Example config.toml](share/config/example.toml) file
 
+## Configuration Options
+
+```toml
+tick_rate = 250
+
+[node]
+provider = "core_lightning"
+
+[bitcoin_core]
+host = "127.0.0.1"
+rpc_port = 18443
+rpc_user = "polaruser"
+rpc_password = "polarpass"
+zmq_port = 28334
+
+[core_lightning]
+rest_address = "http://127.0.0.1:3010"
+rest_rune = "replaceme"
+
+[lnd]
+rest_address = "https://127.0.0.1:8080"
+macaroon_hex = "replaceme"
+
+[price]
+enabled = true
+currency = "USD"
+big_text = true
+
+[fees]
+enabled = true
+
+```
+
 ## Screenshot
 
 ![btcmon](share/screenshots/btcmon.png?raw=true)
