@@ -81,7 +81,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         _ => {}
     }
 
-    app.widgets[current_index].render(*top_panel, frame.buffer_mut(), &mut app.state.node_states[current_index]);
+    app.widgets[current_index].render(*top_panel, frame.buffer_mut(), &mut app.state.node_states[current_index], &app.config);
 
     frame.render_stateful_widget(NodeStatusWidget, *status_panel, &mut app.state.node_states[current_index]);
 

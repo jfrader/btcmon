@@ -20,7 +20,7 @@ use tokio::time;
 use tokio::time::Instant;
 
 use crate::app::AppThread;
-use crate::config::BitcoinCoreSettings;
+use crate::config::{AppConfig, BitcoinCoreSettings};
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraph;
 use crate::node::{NodeProvider, NodeState, NodeStatus};
@@ -55,7 +55,7 @@ impl DynamicState for BitcoinCoreWidgetState {
 pub struct BitcoinCoreWidget;
 
 impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, _config: &AppConfig) {
         let mut default = BitcoinCoreWidgetState::default();
         let state = node_state
             .widget_state

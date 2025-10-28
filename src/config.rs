@@ -56,6 +56,7 @@ pub struct NodeConfig {
 #[allow(unused)]
 pub struct AppConfig {
     pub tick_rate: String,
+    pub streamer_mode: bool,
     pub price: PriceSettings,
     pub fees: FeesSettings,
     pub bitcoin_core: BitcoinCoreSettings,
@@ -81,6 +82,7 @@ impl AppConfig {
         let mut s = Config::builder()
             // general
             .set_default("tick_rate", 250)?
+            .set_default("streamer_mode", false)?
             // bitcoin core defaults
             .set_default("bitcoin_core.host", "localhost")?
             .set_default("bitcoin_core.rpc_port", 8332)?
@@ -129,7 +131,7 @@ impl AppConfig {
                 .and_then(|v| Some(v.first().unwrap().as_str()))
             {
                 match key.as_str() {
-                    "price.enabled" | "fees.enabled" => {
+                    "price.enabled" | "fees.enabled" | "streamer_mode" => {
                         s = s.set_override(key, match_string_to_bool(value))?;
                     }
                     _ => {
