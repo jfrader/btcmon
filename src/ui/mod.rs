@@ -88,11 +88,9 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         &app.config,
     );
 
-    frame.render_stateful_widget(
-        NodeStatusWidget,
-        *status_panel,
-        &mut app.state.node_states[current_index],
-    );
+    // Use only NodeState for NodeStatusWidget
+    let mut state = app.state.node_states[current_index].clone();
+    frame.render_stateful_widget(NodeStatusWidget, *status_panel, &mut state);
 
     let node_state = &app.state.node_states[current_index];
     if let Some(time) = node_state.last_hash_instant {

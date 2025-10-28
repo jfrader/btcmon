@@ -14,9 +14,9 @@ use tokio::time::{self, Duration, Instant};
 use crate::config::{AppConfig, LndSettings};
 use crate::event::Event;
 use crate::node::widgets::{BlockedParagraph, BlockedParagraphWithGauge};
-use crate::node::{NodeState, NodeStatus};
+use crate::node::{NodeProvider, NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{app::AppThread, node::NodeProvider};
+use crate::{app::AppThread};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {

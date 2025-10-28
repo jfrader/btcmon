@@ -1,5 +1,3 @@
-// config.rs
-
 use argmap::List;
 use config::{Config, ConfigError, File};
 use serde_derive::Deserialize;
@@ -57,6 +55,7 @@ pub struct NodeConfig {
 pub struct AppConfig {
     pub tick_rate: String,
     pub streamer_mode: bool,
+    pub node_switch_interval: String, // New field for rotation time in seconds
     pub price: PriceSettings,
     pub fees: FeesSettings,
     pub bitcoin_core: BitcoinCoreSettings,
@@ -83,7 +82,8 @@ impl AppConfig {
             // general
             .set_default("tick_rate", 250)?
             .set_default("streamer_mode", false)?
-            // bitcoin core defaults
+            .set_default("node_switch_interval", "5")? // Default rotation time of 5 seconds
+            // bitcoin core defaults (will be cleared if nodes is used)
             .set_default("bitcoin_core.host", "localhost")?
             .set_default("bitcoin_core.rpc_port", 8332)?
             .set_default("bitcoin_core.rpc_user", "username")?
@@ -141,6 +141,15 @@ impl AppConfig {
             }
         }
 
-        s.build()?.try_deserialize()
+        let mut config: AppConfig = s.build()?.try_deserialize()?;
+
+        // Clear legacy providers if nodes array is used
+        if !config.nodes.is_empty() {
+            config.bitcoin_core = BitcoinCoreSettings::default();
+            config.core_lightning = CoreLightningSettings::default();
+            config.lnd = LndSettings::default();
+        }
+
+        Ok(config)
     }
 }

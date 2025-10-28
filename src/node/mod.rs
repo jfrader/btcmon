@@ -1,5 +1,3 @@
-// node/mod.rs
-
 pub mod providers;
 pub mod widgets;
 
@@ -19,7 +17,8 @@ use ratatui::{
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, Mutex}, time::Duration,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
@@ -69,43 +68,27 @@ pub struct NodeState {
     pub service_display_index: usize,
     pub last_service_switch: Option<Instant>,
     pub widget_state: Box<dyn DynamicState>,
-}
-
-impl Clone for NodeState {
-    fn clone(&self) -> Self {
-        Self {
-            host: self.host.clone(),
-            message: self.message.clone(),
-            status: self.status,
-            height: self.height,
-            last_hash_instant: self.last_hash_instant,
-            services: self.services.clone(),
-            last_service_switch: self.last_service_switch,
-            service_display_index: self.service_display_index,
-            widget_state: self.widget_state.clone_box(),
-        }
-    }
-}
-
-impl Default for NodeState {
-    fn default() -> Self {
-        Self {
-            host: "".to_string(),
-            message: "".to_string(),
-            status: NodeStatus::Offline,
-            height: 0,
-            last_hash_instant: None,
-            services: HashMap::new(),
-            last_service_switch: None,
-            service_display_index: 0,
-            widget_state: Box::new(DefaultWidgetState),
-        }
-    }
+    pub current_node_index: usize,   
+    pub total_nodes: usize,          
+    pub seconds_until_rotation: u64,
 }
 
 impl NodeState {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            host: String::new(),
+            message: String::new(),
+            status: NodeStatus::default(),
+            height: 0,
+            last_hash_instant: None,
+            services: HashMap::new(),
+            service_display_index: 0,
+            last_service_switch: None,
+            widget_state: Box::new(DefaultWidgetState),
+            current_node_index: 0,
+            total_nodes: 0,
+            seconds_until_rotation: 0,
+        }
     }
 
     pub fn set_last_service_switch(
@@ -155,6 +138,31 @@ impl NodeState {
     }
 }
 
+impl Default for NodeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clone for NodeState {
+    fn clone(&self) -> Self {
+        Self {
+            host: self.host.clone(),
+            message: self.message.clone(),
+            status: self.status,
+            height: self.height,
+            last_hash_instant: self.last_hash_instant,
+            services: self.services.clone(),
+            last_service_switch: self.last_service_switch,
+            service_display_index: self.service_display_index,
+            widget_state: self.widget_state.clone_box(),
+            current_node_index: self.current_node_index,
+            total_nodes: self.total_nodes,
+            seconds_until_rotation: self.seconds_until_rotation,
+        }
+    }
+}
+
 #[async_trait]
 pub trait NodeProvider {
     async fn init(&mut self, thread: AppThread, index: usize) -> Result<()>;
@@ -168,7 +176,7 @@ pub struct Node {
 impl Node {
     pub fn new(thread: AppThread) -> Self {
         Self {
-            thread: thread.clone(),
+            thread: thread.clone(), // Clone to avoid move issues
             handler: None,
         }
     }
