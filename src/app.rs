@@ -1,6 +1,6 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use std::error;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use std::str::FromStr;
+use std::{error};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -67,9 +67,7 @@ impl App {
             running: true,
             config,
             thread,
-            nodes: (0..num_nodes)
-                .map(|_| Node::new(cloned_thread.clone()))
-                .collect(),
+            nodes: (0..num_nodes).map(|_| Node::new(cloned_thread.clone())).collect(),
             current_node_index: 0,
             last_node_switch: None,
             node_switch_interval: Duration::from_secs(5),
@@ -78,14 +76,11 @@ impl App {
                 counter: 0,
                 price: PriceState::new(),
                 fees: FeesState::new(),
-                node_states: widget_states
-                    .into_iter()
-                    .map(|ws| {
-                        let mut ns = NodeState::new();
-                        ns.widget_state = ws;
-                        ns
-                    })
-                    .collect(),
+                node_states: widget_states.into_iter().map(|ws| {
+                    let mut ns = NodeState::new();
+                    ns.widget_state = ws;
+                    ns
+                }).collect(),
             },
         }
     }
@@ -140,11 +135,7 @@ impl App {
         self.state.price = state;
     }
 
-    pub fn handle_node_update(
-        &mut self,
-        index: usize,
-        update_fn: &(dyn Fn(NodeState) -> NodeState + Send + Sync),
-    ) {
+    pub fn handle_node_update(&mut self, index: usize, update_fn: &(dyn Fn(NodeState) -> NodeState + Send + Sync)) {
         let updated = update_fn(self.state.node_states[index].clone());
         self.state.node_states[index] = updated;
     }
@@ -163,20 +154,44 @@ impl App {
                     self.quit();
                 }
             }
-            KeyCode::Right => {
-                self.increment_counter();
-            }
-            KeyCode::Left => {
-                self.decrement_counter();
-            }
-            KeyCode::Char('n') => {
+            KeyCode::Right | KeyCode::Char('n') => {
                 if self.nodes.len() > 1 {
                     self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
                     self.last_node_switch = Some(Instant::now());
                 }
             }
-            KeyCode::Char(' ') => {}
+            KeyCode::Left => {
+                if self.nodes.len() > 1 {
+                    self.current_node_index = if self.current_node_index == 0 {
+                        self.nodes.len() - 1
+                    } else {
+                        self.current_node_index - 1
+                    };
+                    self.last_node_switch = Some(Instant::now());
+                }
+            }
             _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn handle_mouse_events(&mut self, mouse_event: MouseEvent) -> AppResult<()> {
+        if self.nodes.len() > 1 {
+            match mouse_event.kind {
+                MouseEventKind::Down(_) => {
+                    // Get the mouse coordinates
+                    // let x = mouse_event.column;
+                    let y = mouse_event.row;
+
+                    // Assuming the top panel is the node UI (first section in ui/mod.rs layout)
+                    // This is a rough check; adjust based on actual layout constraints
+                    if y < (self.config.tick_rate.parse::<u64>().unwrap() as u16 / 2) { // Half the screen height as a proxy
+                        self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
+                        self.last_node_switch = Some(Instant::now());
+                    }
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
