@@ -1,4 +1,5 @@
 tick_rate = 250
+streamer_mode = false
 
 [node]
 provider = "bitcoin_core"
