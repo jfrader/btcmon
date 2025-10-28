@@ -1,7 +1,10 @@
+// node/providers/bitcoin_core.rs
+
 use anyhow::Result;
 use async_trait::async_trait;
-use bitcoin::consensus::deserialize;
-use bitcoin::BlockHash;
+// use bitcoin::consensus::deserialize;
+// use bitcoin::BlockHash;
+// use std::str::FromStr;
 use bitcoincore_rpc::{json::GetBlockchainInfoResult, RpcApi};
 use bitcoincore_zmq::subscribe_async_monitor_stream::MessageStream;
 use bitcoincore_zmq::{subscribe_async_wait_handshake, SocketEvent, SocketMessage};
@@ -11,17 +14,17 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time;
 use tokio::time::Instant;
 
+use crate::app::AppThread;
+use crate::config::BitcoinCoreSettings;
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraph;
-use crate::node::{NodeState, NodeStatus};
+use crate::node::{NodeProvider, NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
 
 #[derive(Clone)]
 pub struct BitcoinCore {
@@ -88,84 +91,121 @@ impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
 }
 
 impl BitcoinCore {
-    fn get_op_return_data(&self, block_hash: &str) -> Result<String> {
-        let block_hex = self
-            .rpc_client
-            .get_block_hex(&BlockHash::from_str(block_hash)?)?;
-        let block_bytes = hex::decode(&block_hex)?;
-        let block: bitcoin::Block = deserialize(&block_bytes)?;
+    pub fn new(settings: &BitcoinCoreSettings) -> Self {
+        let rpc = bitcoincore_rpc::Client::new(
+            &format!("{}:{}", settings.host, settings.rpc_port),
+            bitcoincore_rpc::Auth::UserPass(
+                settings.rpc_user.clone(),
+                settings.rpc_password.clone(),
+            ),
+        )
+        .unwrap();
 
-        let mut op_returns = Vec::new();
-
-        for tx in block.txdata {
-            for (_index, output) in tx.output.iter().enumerate() {
-                if output.script_pubkey.is_op_return() {
-                    if let Some(bytes) = output.script_pubkey.as_bytes().get(1..) {
-                        if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-                            if !text.is_empty() {
-                                op_returns.push(text);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(if op_returns.is_empty() {
-            "".to_string()
+        let zmq_url: Option<String> = if settings.host.is_empty() {
+            None
         } else {
-            op_returns.join(" | ")
-        })
+            Some(format!("tcp://{}:{}", settings.host, settings.zmq_port))
+        };
+
+        Self {
+            rpc_client: Arc::new(rpc),
+            zmq_url,
+            host: settings.host.clone(),
+        }
     }
+
+    // fn get_op_return_data(&self, block_hash: &str) -> Result<String> {
+    //     let block_hex = self
+    //         .rpc_client
+    //         .get_block_hex(&BlockHash::from_str(block_hash)?)?;
+    //     let block_bytes = hex::decode(&block_hex)?;
+    //     let block: bitcoin::Block = deserialize(&block_bytes)?;
+
+    //     let mut op_returns = Vec::new();
+
+    //     for tx in block.txdata {
+    //         for (_index, output) in tx.output.iter().enumerate() {
+    //             if output.script_pubkey.is_op_return() {
+    //                 if let Some(bytes) = output.script_pubkey.as_bytes().get(1..) {
+    //                     if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+    //                         if !text.is_empty() {
+    //                             op_returns.push(text);
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     Ok(if op_returns.is_empty() {
+    //         "".to_string()
+    //     } else {
+    //         op_returns.join(" | ")
+    //     })
+    // }
 
     async fn get_blockchain_info(
         &mut self,
         sender: UnboundedSender<Event>,
+        index: usize,
     ) -> Result<GetBlockchainInfoResult> {
-        let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            if state.status == NodeStatus::Offline {
-                state.status = NodeStatus::Connecting;
-                *state
-                    .services
-                    .entry("RPC".to_string())
-                    .or_insert(NodeStatus::Connecting) = NodeStatus::Connecting;
-            }
-            state
-        })));
-
-        match self.rpc_client.get_blockchain_info() {
-            Ok(blockchain_info) => {
-                let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                    if state.services.get("ZMQ") != Some(&NodeStatus::Online)
-                        && state.height > 0
-                        && state.height < blockchain_info.blocks
-                    {
-                        state.last_hash_instant = Some(Instant::now());
-                    }
-
-                    let new_status = if blockchain_info.blocks < blockchain_info.headers {
-                        NodeStatus::Synchronizing
-                    } else {
-                        NodeStatus::Online
-                    };
-
-                    state.status = new_status;
-                    state.message = "".to_string();
-                    state.height = blockchain_info.blocks;
-
+        let _ = sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(|mut state| {
+                if state.status == NodeStatus::Offline {
+                    state.status = NodeStatus::Connecting;
                     *state
                         .services
                         .entry("RPC".to_string())
-                        .or_insert(NodeStatus::Online) = NodeStatus::Online;
+                        .or_insert(NodeStatus::Connecting) = NodeStatus::Connecting;
+                }
+                state
+            }),
+        ));
 
-                    state.widget_state = Box::new(BitcoinCoreWidgetState {
-                        title: "Bitcoin Core".to_string(),
-                        headers: blockchain_info.headers,
-                        last_hash: blockchain_info.best_block_hash.to_string(),
-                    });
+        match self.rpc_client.get_blockchain_info() {
+            Ok(blockchain_info) => {
+                let _ = sender.send(Event::NodeUpdate(
+                    index,
+                    Arc::new(move |mut state| {
+                        if state.services.get("ZMQ") != Some(&NodeStatus::Online)
+                            && state.height > 0
+                            && state.height < blockchain_info.blocks
+                        {
+                            state.last_hash_instant = Some(Instant::now());
+                        }
 
-                    state
-                })));
+                        let new_status = if blockchain_info.blocks < blockchain_info.headers {
+                            NodeStatus::Synchronizing
+                        } else {
+                            NodeStatus::Online
+                        };
+
+                        state.status = new_status;
+                        state.message = "".to_string();
+                        state.height = blockchain_info.blocks;
+
+                        *state
+                            .services
+                            .entry("RPC".to_string())
+                            .or_insert(NodeStatus::Online) = NodeStatus::Online;
+
+                        let title = state
+                            .widget_state
+                            .as_any()
+                            .downcast_ref::<BitcoinCoreWidgetState>()
+                            .map(|ws| ws.title.clone())
+                            .unwrap_or("Bitcoin Core".to_string());
+
+                        state.widget_state = Box::new(BitcoinCoreWidgetState {
+                            title,
+                            headers: blockchain_info.headers,
+                            last_hash: blockchain_info.best_block_hash.to_string(),
+                        });
+
+                        state
+                    }),
+                ));
 
                 Ok(blockchain_info)
             }
@@ -177,24 +217,28 @@ impl BitcoinCore {
         &self,
         thread: &AppThread,
         mut stream: MessageStream,
+        index: usize,
     ) -> tokio::task::JoinHandle<()> {
         let token = thread.token.clone();
         let sender = thread.sender.clone();
 
-        let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            *state
-                .services
-                .entry("ZMQ".to_string())
-                .or_insert(NodeStatus::Online) = NodeStatus::Online;
+        let _ = sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(|mut state| {
+                *state
+                    .services
+                    .entry("ZMQ".to_string())
+                    .or_insert(NodeStatus::Online) = NodeStatus::Online;
 
-            state
-        })));
+                state
+            }),
+        ));
 
         thread.tracker.spawn(async move {
             loop {
                 let recv = tokio::select! {
                     r = stream.next() => r,
-                    () = token.cancelled() => None
+                    _ = token.cancelled() => None
                 };
 
                 if let Some(ref msg) = recv {
@@ -203,8 +247,9 @@ impl BitcoinCore {
                             bitcoincore_zmq::Message::HashBlock(hash, _) => {
                                 let hash = hash.to_string();
 
-                                let _ =
-                                    sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
+                                let _ = sender.send(Event::NodeUpdate(
+                                    index,
+                                    Arc::new(move |mut state| {
                                         let widget_state = state
                                             .widget_state
                                             .as_any()
@@ -221,30 +266,37 @@ impl BitcoinCore {
 
                                         state.last_hash_instant = Some(Instant::now());
                                         state
-                                    })));
+                                    }),
+                                ));
                             }
                             _ => {}
                         },
                         Ok(SocketMessage::Event(event)) => match event.event {
                             SocketEvent::Disconnected { .. } => {
-                                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                                    *state
-                                        .services
-                                        .entry("ZMQ".to_string())
-                                        .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
+                                let _ = sender.send(Event::NodeUpdate(
+                                    index,
+                                    Arc::new(|mut state| {
+                                        *state
+                                            .services
+                                            .entry("ZMQ".to_string())
+                                            .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
 
-                                    state
-                                })));
+                                        state
+                                    }),
+                                ));
                             }
                             SocketEvent::HandshakeSucceeded => {
-                                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                                    *state
-                                        .services
-                                        .entry("ZMQ".to_string())
-                                        .or_insert(NodeStatus::Online) = NodeStatus::Online;
+                                let _ = sender.send(Event::NodeUpdate(
+                                    index,
+                                    Arc::new(|mut state| {
+                                        *state
+                                            .services
+                                            .entry("ZMQ".to_string())
+                                            .or_insert(NodeStatus::Online) = NodeStatus::Online;
 
-                                    state
-                                })));
+                                        state
+                                    }),
+                                ));
                             }
                             _ => {}
                         },
@@ -257,14 +309,17 @@ impl BitcoinCore {
                 }
             }
 
-            let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                *state
-                    .services
-                    .entry("ZMQ".to_string())
-                    .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
+            let _ = sender.send(Event::NodeUpdate(
+                index,
+                Arc::new(|mut state| {
+                    *state
+                        .services
+                        .entry("ZMQ".to_string())
+                        .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
 
-                state
-            })));
+                    state
+                }),
+            ));
         })
     }
 
@@ -272,26 +327,30 @@ impl BitcoinCore {
         &mut self,
         thread: &AppThread,
         zmq_url: &str,
+        index: usize,
     ) -> Result<tokio::task::JoinHandle<()>> {
         let urls = [zmq_url];
 
         let sender = thread.sender.clone();
 
-        let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-            *state
-                .services
-                .entry("ZMQ".to_string())
-                .or_insert(NodeStatus::Connecting) = NodeStatus::Connecting;
+        let _ = sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(|mut state| {
+                *state
+                    .services
+                    .entry("ZMQ".to_string())
+                    .or_insert(NodeStatus::Connecting) = NodeStatus::Connecting;
 
-            state
-        })));
+                state
+            }),
+        ));
 
         let select = tokio::select! {
             r = tokio::time::timeout(
                 tokio::time::Duration::from_millis(5000),
                 subscribe_async_wait_handshake(&urls),
             ) => r.ok(),
-            () = thread.token.cancelled() => None
+            _ = thread.token.cancelled() => None
         };
 
         let stream = match select {
@@ -301,15 +360,16 @@ impl BitcoinCore {
             }
         };
 
-        Ok(self.spawn_zmq_listener(thread, stream))
+        Ok(self.spawn_zmq_listener(thread, stream, index))
     }
 
     async fn try_subscribe(
         &mut self,
         thread: &AppThread,
+        index: usize,
     ) -> Option<Result<tokio::task::JoinHandle<()>>> {
         if let Some(url) = self.zmq_url.clone() {
-            return Some(self.subscribe(thread, &url).await);
+            return Some(self.subscribe(thread, &url, index).await);
         };
 
         None
@@ -318,53 +378,18 @@ impl BitcoinCore {
 
 #[async_trait]
 impl NodeProvider for BitcoinCore {
-    fn new(config: &AppConfig) -> Self {
-        let rpc = bitcoincore_rpc::Client::new(
-            vec![
-                config.bitcoin_core.host.as_str(),
-                config.bitcoin_core.rpc_port.as_str(),
-            ]
-            .join(":")
-            .as_str(),
-            bitcoincore_rpc::Auth::UserPass(
-                config.bitcoin_core.rpc_user.to_string(),
-                config.bitcoin_core.rpc_password.to_string(),
-            ),
-        )
-        .unwrap();
-
-        let zmq_url: Option<String> = match config.bitcoin_core.host.as_str() {
-            "" => None,
-            _ => Some(
-                vec![
-                    "tcp://",
-                    &config.bitcoin_core.host,
-                    ":",
-                    &config.bitcoin_core.zmq_port,
-                ]
-                .join(""),
-            ),
-        };
-
-        Self {
-            rpc_client: Arc::new(rpc),
-            zmq_url,
-            host: config.bitcoin_core.host.clone(),
-        }
-    }
-
-    async fn init(&mut self, thread: AppThread) -> Result<()> {
+    async fn init(&mut self, thread: AppThread, index: usize) -> Result<()> {
         let check_interval = time::Duration::from_millis(15 * 1000);
 
         let host = self.host.clone();
 
-        let _ = thread
-            .sender
-            .send(Event::NodeUpdate(Arc::new(move |mut state| {
+        let _ = thread.sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(move |mut state| {
                 state.host = host.clone();
                 state.message = "Initializing Bitcoin Core...".to_string();
                 state.widget_state = Box::new(BitcoinCoreWidgetState {
-                    title: "Bitcoin Core".to_string(),
+                    title: format!("Bitcoin Core ({})", host),
                     headers: 0,
                     last_hash: "".to_string(),
                 });
@@ -375,30 +400,27 @@ impl NodeProvider for BitcoinCore {
                     .services
                     .insert("ZMQ".to_string(), NodeStatus::Offline);
                 state
-            })));
+            }),
+        ));
 
-        let _ = self.get_blockchain_info(thread.sender.clone()).await;
+        let _ = self.get_blockchain_info(thread.sender.clone(), index).await;
 
-        let mut sub_handlers = Box::new(self.try_subscribe(&thread).await);
+        let mut sub_handlers = self.try_subscribe(&thread, index).await;
 
         loop {
             if thread.token.is_cancelled() {
                 break;
             }
 
-            match *sub_handlers {
-                Some(Ok(ref handler)) => {
-                    if handler.is_finished() {
-                        sub_handlers = Box::new(self.try_subscribe(&thread).await);
-                    }
+            if let Some(Ok(handler)) = &sub_handlers {
+                if handler.is_finished() {
+                    sub_handlers = self.try_subscribe(&thread, index).await;
                 }
-                Some(Err(_)) => {
-                    sub_handlers = Box::new(self.try_subscribe(&thread).await);
-                }
-                _ => {}
+            } else if let Some(Err(_)) = &sub_handlers {
+                sub_handlers = self.try_subscribe(&thread, index).await;
             }
 
-            let _ = self.get_blockchain_info(thread.sender.clone()).await;
+            let _ = self.get_blockchain_info(thread.sender.clone(), index).await;
 
             tokio::time::sleep(check_interval).await;
         }

@@ -1,0 +1,30 @@
+tick_rate = 250
+
+[price]
+enabled = true
+currency = "USD"
+big_text = true
+
+[fees]
+enabled = true
+
+[[nodes]]
+provider = "bitcoin_core"
+[nodes.bitcoin_core]
+host = "127.0.0.1"
+rpc_port = 18443
+rpc_user = "polaruser"
+rpc_password = "polarpass"
+zmq_port = 28334
+
+[[nodes]]
+provider = "core_lightning"
+[nodes.core_lightning]
+rest_address = "http://127.0.0.1:3010"
+rest_rune = "your_actual_rune"
+
+[[nodes]]
+provider = "lnd"
+[nodes.lnd]
+rest_address = "https://127.0.0.1:8080"
+macaroon_hex = "your_actual_macaroon"

@@ -40,7 +40,8 @@ impl StatefulWidget for NodeStatusWidget {
         } else {
             &state.message
         };
-        Paragraph::new(format!("Node {} | {}", state.status, message))
+        let message = format!("Node {} | {}", state.status, message);
+        Paragraph::new(message)
             .block(Block::new().padding(Padding::left(1)))
             .style(Style::default().fg(Color::White))
             .render(status_bar_layout[1], buf);

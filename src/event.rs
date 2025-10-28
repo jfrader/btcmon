@@ -1,3 +1,5 @@
+// event.rs
+
 use std::sync::Arc;
 
 use crossterm::event::{Event as CrosstermEvent, KeyEvent, MouseEvent};
@@ -5,7 +7,10 @@ use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::{app::AppResult, fees::FeesState, node::NodeState, price::PriceState};
+use crate::app::AppResult;
+use crate::fees::FeesState;
+use crate::node::NodeState;
+use crate::price::PriceState;
 
 #[derive(Clone)]
 pub enum Event {
@@ -15,7 +20,7 @@ pub enum Event {
     Resize(u16, u16),
     PriceUpdate(PriceState),
     FeeUpdate(FeesState),
-    NodeUpdate(Arc<dyn Fn(NodeState) -> NodeState + Send + Sync>),
+    NodeUpdate(usize, Arc<dyn Fn(NodeState) -> NodeState + Send + Sync>),
 }
 
 #[allow(dead_code)]

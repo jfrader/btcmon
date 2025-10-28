@@ -1,3 +1,5 @@
+// node/providers/core_lightning.rs
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ratatui::buffer::Buffer;
@@ -11,11 +13,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
+use crate::app::AppThread;
+use crate::config::CoreLightningSettings;
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraphWithGauge;
-use crate::node::{NodeState, NodeStatus};
+use crate::node::{NodeProvider, NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
@@ -163,15 +166,15 @@ struct NodeInfo {
 }
 
 impl CoreLightning {
-    fn new(rest_address: String, rune: String) -> Self {
+    pub fn new(settings: &CoreLightningSettings) -> Self {
         let client = Client::builder()
             .danger_accept_invalid_certs(true)
             .build()
             .unwrap();
 
         Self {
-            rest_address,
-            rune,
+            rest_address: settings.rest_address.clone(),
+            rune: settings.rest_rune.clone(),
             client: Arc::new(client),
         }
     }
@@ -242,23 +245,23 @@ impl CoreLightning {
         let (total_capacity, local_balance, num_pending_htlcs, message) =
             match self.fetch_channels().await {
                 Ok(peers) => {
-                    let channels = &peers.channels;
+                    let channels = peers.channels;
 
                     let capacity = channels
-                        .into_iter()
+                        .iter()
                         .filter(|channel| channel.state == "CHANNELD_NORMAL")
                         .map(|c| c.total_msat / 1000)
                         .sum::<u64>();
 
                     let balance = channels
-                        .into_iter()
+                        .iter()
                         .filter(|channel| channel.state == "CHANNELD_NORMAL")
                         .map(|c| c.to_us_msat / 1000)
                         .sum::<u64>();
 
                     let pending_htlcs = channels
-                        .into_iter()
-                        .flat_map(|channel| &channel.htlcs)
+                        .iter()
+                        .flat_map(|channel| channel.htlcs.iter())
                         .count() as u32;
 
                     (capacity, balance, pending_htlcs, String::new())
@@ -281,17 +284,20 @@ impl CoreLightning {
         })
     }
 
-    async fn update_node_state(&self, sender: UnboundedSender<Event>) -> Result<()> {
+    async fn update_node_state(&self, sender: UnboundedSender<Event>, index: usize) -> Result<()> {
         let node_info = self.get_node_info().await?;
 
-        let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
+        let _ = sender.send(Event::NodeUpdate(index, Arc::new(move |mut state| {
             let widget_state = state
                 .widget_state
                 .as_any()
                 .downcast_ref::<CoreLightningWidgetState>()
                 .unwrap();
 
-            state.services.insert("REST".to_string(), node_info.status);
+            *state
+                .services
+                .entry("REST".to_string())
+                .or_insert(node_info.status) = node_info.status;
 
             if state.height > 0 && state.height < node_info.height {
                 state.last_hash_instant = Some(Instant::now());
@@ -324,27 +330,20 @@ impl CoreLightning {
 
 #[async_trait]
 impl NodeProvider for CoreLightning {
-    fn new(config: &AppConfig) -> Self {
-        Self::new(
-            config.core_lightning.rest_address.clone(),
-            config.core_lightning.rest_rune.clone(),
-        )
-    }
-
-    async fn init(&mut self, thread: AppThread) -> Result<()> {
+    async fn init(&mut self, thread: AppThread, index: usize) -> Result<()> {
         let check_interval = Duration::from_secs(15);
         let host = self.rest_address.clone();
 
         let _ = thread
             .sender
-            .send(Event::NodeUpdate(Arc::new(move |mut state| {
+            .send(Event::NodeUpdate(index, Arc::new(move |mut state| {
                 state.host = host.clone();
                 state.message = "Initializing CLN REST...".to_string();
                 state
                     .services
                     .insert("REST".to_string(), NodeStatus::Offline);
                 state.widget_state = Box::new(CoreLightningWidgetState {
-                    title: "Core Lightning".to_string(),
+                    title: format!("Core Lightning ({})", host),
                     ..Default::default()
                 });
                 state
@@ -355,7 +354,7 @@ impl NodeProvider for CoreLightning {
                 break;
             }
 
-            let _ = self.update_node_state(thread.sender.clone()).await;
+            let _ = self.update_node_state(thread.sender.clone(), index).await;
             time::sleep(check_interval).await;
         }
 
