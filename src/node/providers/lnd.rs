@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
-use crate::config::LndSettings;
+use crate::config::{AppConfig, LndSettings};
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraphWithGauge;
 use crate::node::{NodeState, NodeStatus};
@@ -89,7 +89,7 @@ impl DynamicState for LndWidgetState {
 pub struct LndWidget;
 
 impl DynamicNodeStatefulWidget for LndWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, config: &AppConfig) {
         let mut default = LndWidgetState::default();
         let state = node_state
             .widget_state
@@ -108,11 +108,16 @@ impl DynamicNodeStatefulWidget for LndWidget {
             ]),
         };
 
+        let alias_text = match config.streamer_mode {
+            true => "****".to_string(),
+            false => state.alias.clone(),
+        };
+
         let lines = vec![
             block_height,
             Line::from(vec![
                 Span::raw("Alias: "),
-                Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
+                Span::styled(alias_text, Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Active Channels: "),

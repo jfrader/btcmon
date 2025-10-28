@@ -14,7 +14,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
 use crate::app::AppThread;
-use crate::config::CoreLightningSettings;
+use crate::config::{AppConfig, CoreLightningSettings};
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraphWithGauge;
 use crate::node::{NodeProvider, NodeState, NodeStatus};
@@ -87,13 +87,18 @@ impl DynamicState for CoreLightningWidgetState {
 pub struct CoreLightningWidget;
 
 impl DynamicNodeStatefulWidget for CoreLightningWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState) {
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, config: &AppConfig) {
         let mut default = CoreLightningWidgetState::default();
         let state = node_state
             .widget_state
             .as_any_mut()
             .downcast_mut::<CoreLightningWidgetState>()
             .unwrap_or(&mut default);
+
+        let alias_text = match config.streamer_mode {
+            true => "****".to_string(),
+            false => state.alias.clone(),
+        };
 
         let lines = vec![
             Line::from(vec![
@@ -102,7 +107,7 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
             ]),
             Line::from(vec![
                 Span::raw("Alias: "),
-                Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
+                Span::styled(alias_text, Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Active Channels: "),
@@ -287,39 +292,42 @@ impl CoreLightning {
     async fn update_node_state(&self, sender: UnboundedSender<Event>, index: usize) -> Result<()> {
         let node_info = self.get_node_info().await?;
 
-        let _ = sender.send(Event::NodeUpdate(index, Arc::new(move |mut state| {
-            let widget_state = state
-                .widget_state
-                .as_any()
-                .downcast_ref::<CoreLightningWidgetState>()
-                .unwrap();
+        let _ = sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(move |mut state| {
+                let widget_state = state
+                    .widget_state
+                    .as_any()
+                    .downcast_ref::<CoreLightningWidgetState>()
+                    .unwrap();
 
-            *state
-                .services
-                .entry("REST".to_string())
-                .or_insert(node_info.status) = node_info.status;
+                *state
+                    .services
+                    .entry("REST".to_string())
+                    .or_insert(node_info.status) = node_info.status;
 
-            if state.height > 0 && state.height < node_info.height {
-                state.last_hash_instant = Some(Instant::now());
-            }
+                if state.height > 0 && state.height < node_info.height {
+                    state.last_hash_instant = Some(Instant::now());
+                }
 
-            state.status = node_info.status;
-            state.message = node_info.message.clone();
-            state.height = node_info.height;
-            state.widget_state = Box::new(CoreLightningWidgetState {
-                title: widget_state.title.clone(),
-                alias: node_info.alias.clone(),
-                num_peers: node_info.num_peers,
-                num_pending_channels: node_info.num_pending_channels,
-                num_active_channels: node_info.num_active_channels,
-                num_inactive_channels: node_info.num_inactive_channels,
-                total_capacity: node_info.total_capacity,
-                local_balance: node_info.local_balance,
-                num_pending_htlcs: node_info.num_pending_htlcs,
-            });
+                state.status = node_info.status;
+                state.message = node_info.message.clone();
+                state.height = node_info.height;
+                state.widget_state = Box::new(CoreLightningWidgetState {
+                    title: widget_state.title.clone(),
+                    alias: node_info.alias.clone(),
+                    num_peers: node_info.num_peers,
+                    num_pending_channels: node_info.num_pending_channels,
+                    num_active_channels: node_info.num_active_channels,
+                    num_inactive_channels: node_info.num_inactive_channels,
+                    total_capacity: node_info.total_capacity,
+                    local_balance: node_info.local_balance,
+                    num_pending_htlcs: node_info.num_pending_htlcs,
+                });
 
-            state
-        })));
+                state
+            }),
+        ));
 
         if node_info.status == NodeStatus::Offline {
             return Err(anyhow!("Node info fetch failed"));
@@ -334,9 +342,9 @@ impl NodeProvider for CoreLightning {
         let check_interval = Duration::from_secs(15);
         let host = self.rest_address.clone();
 
-        let _ = thread
-            .sender
-            .send(Event::NodeUpdate(index, Arc::new(move |mut state| {
+        let _ = thread.sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(move |mut state| {
                 state.host = host.clone();
                 state.message = "Initializing CLN REST...".to_string();
                 state
@@ -347,7 +355,8 @@ impl NodeProvider for CoreLightning {
                     ..Default::default()
                 });
                 state
-            })));
+            }),
+        ));
 
         loop {
             if thread.token.is_cancelled() {

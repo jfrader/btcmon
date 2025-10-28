@@ -6,7 +6,7 @@ use ratatui::{
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::node::NodeState;
+use crate::{config::AppConfig, node::NodeState};
 
 pub trait DynamicState: Any + Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -19,7 +19,7 @@ pub trait DynamicStatefulWidget {
 }
 
 pub trait DynamicNodeStatefulWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState);
+    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, config: &AppConfig);
 }
 
 #[derive(Clone, Debug)]
