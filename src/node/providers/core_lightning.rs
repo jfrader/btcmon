@@ -16,7 +16,7 @@ use tokio::time::{self, Duration, Instant};
 use crate::app::AppThread;
 use crate::config::{AppConfig, CoreLightningSettings};
 use crate::event::Event;
-use crate::node::widgets::BlockedParagraphWithGauge;
+use crate::node::widgets::{BlockedParagraph, BlockedParagraphWithGauge};
 use crate::node::{NodeProvider, NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 
@@ -144,14 +144,19 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
             Line::raw(""),
         ];
 
-        let widget = BlockedParagraphWithGauge::new(
-            &state.title,
-            node_state.status,
-            lines,
-            state.local_balance,
-            state.total_capacity,
-        );
-        widget.render(area, buf);
+        if config.streamer_mode {
+            let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
+            widget.render(area, buf);
+        } else {
+            let widget = BlockedParagraphWithGauge::new(
+                &state.title,
+                node_state.status,
+                lines,
+                state.local_balance,
+                state.total_capacity,
+            );
+            widget.render(area, buf);
+        }
     }
 }
 
