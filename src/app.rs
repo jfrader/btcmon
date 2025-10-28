@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use std::error;
 use std::str::FromStr;
-use std::{error};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -47,6 +47,7 @@ pub struct App {
     pub current_node_index: usize,
     pub last_node_switch: Option<Instant>,
     pub node_switch_interval: Duration,
+    pub seconds_until_rotation: u64,
     pub thread: AppThread,
     pub config: AppConfig,
     pub widgets: Vec<Box<dyn DynamicNodeStatefulWidget>>,
@@ -62,25 +63,35 @@ impl App {
         config: AppConfig,
     ) -> Self {
         let cloned_thread = thread.clone();
+        let interval = Duration::from_secs(config.node_switch_interval.parse::<u64>().unwrap_or(5));
         let num_nodes = widgets.len();
         Self {
             running: true,
             config,
             thread,
-            nodes: (0..num_nodes).map(|_| Node::new(cloned_thread.clone())).collect(),
+            nodes: (0..num_nodes)
+                .map(|_| Node::new(cloned_thread.clone()))
+                .collect(),
             current_node_index: 0,
             last_node_switch: None,
-            node_switch_interval: Duration::from_secs(5),
+            node_switch_interval: interval,
+            seconds_until_rotation: interval.as_secs(),
             widgets,
             state: AppState {
                 counter: 0,
                 price: PriceState::new(),
                 fees: FeesState::new(),
-                node_states: widget_states.into_iter().map(|ws| {
-                    let mut ns = NodeState::new();
-                    ns.widget_state = ws;
-                    ns
-                }).collect(),
+                node_states: widget_states
+                    .into_iter()
+                    .map(|ws| {
+                        let mut ns = NodeState::new();
+                        ns.widget_state = ws;
+                        ns.current_node_index = 0; // Will be updated in tick
+                        ns.total_nodes = num_nodes;
+                        ns.seconds_until_rotation = interval.as_secs();
+                        ns
+                    })
+                    .collect(),
             },
         }
     }
@@ -97,19 +108,25 @@ impl App {
     }
 
     pub fn tick(&mut self) {
-        for node_state in &mut self.state.node_states {
+        for (_i, node_state) in self.state.node_states.iter_mut().enumerate() {
             node_state.tick();
+            node_state.current_node_index = self.current_node_index;
+            node_state.total_nodes = self.nodes.len();
+            node_state.seconds_until_rotation = self.seconds_until_rotation;
         }
 
         if self.nodes.len() > 1 {
             let now = Instant::now();
-            let should_advance = match self.last_node_switch {
-                Some(last) => now.duration_since(last) >= self.node_switch_interval,
-                None => true,
-            };
-
-            if should_advance {
-                self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
+            if let Some(last_switch) = self.last_node_switch {
+                let elapsed = now.duration_since(last_switch).as_secs();
+                self.seconds_until_rotation =
+                    self.node_switch_interval.as_secs().saturating_sub(elapsed);
+                if elapsed >= self.node_switch_interval.as_secs() {
+                    self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
+                    self.last_node_switch = Some(now);
+                    self.seconds_until_rotation = self.node_switch_interval.as_secs();
+                }
+            } else {
                 self.last_node_switch = Some(now);
             }
         }
@@ -135,7 +152,11 @@ impl App {
         self.state.price = state;
     }
 
-    pub fn handle_node_update(&mut self, index: usize, update_fn: &(dyn Fn(NodeState) -> NodeState + Send + Sync)) {
+    pub fn handle_node_update(
+        &mut self,
+        index: usize,
+        update_fn: &(dyn Fn(NodeState) -> NodeState + Send + Sync),
+    ) {
         let updated = update_fn(self.state.node_states[index].clone());
         self.state.node_states[index] = updated;
     }
@@ -158,6 +179,7 @@ impl App {
                 if self.nodes.len() > 1 {
                     self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
                     self.last_node_switch = Some(Instant::now());
+                    self.seconds_until_rotation = self.node_switch_interval.as_secs();
                 }
             }
             KeyCode::Left => {
@@ -167,6 +189,23 @@ impl App {
                     } else {
                         self.current_node_index - 1
                     };
+                    self.last_node_switch = Some(Instant::now());
+                    self.seconds_until_rotation = self.node_switch_interval.as_secs();
+                }
+            }
+            KeyCode::Up => {
+                if self.nodes.len() > 1 {
+                    let new_interval = self.node_switch_interval.as_secs().saturating_add(1);
+                    self.node_switch_interval = Duration::from_secs(new_interval);
+                    self.seconds_until_rotation = new_interval;
+                    self.last_node_switch = Some(Instant::now());
+                }
+            }
+            KeyCode::Down => {
+                if self.nodes.len() > 1 {
+                    let new_interval = self.node_switch_interval.as_secs().saturating_sub(1);
+                    self.node_switch_interval = Duration::from_secs(new_interval.max(1));
+                    self.seconds_until_rotation = new_interval.max(1);
                     self.last_node_switch = Some(Instant::now());
                 }
             }
@@ -179,15 +218,15 @@ impl App {
         if self.nodes.len() > 1 {
             match mouse_event.kind {
                 MouseEventKind::Down(_) => {
-                    // Get the mouse coordinates
-                    // let x = mouse_event.column;
+                    let x = mouse_event.column;
                     let y = mouse_event.row;
-
-                    // Assuming the top panel is the node UI (first section in ui/mod.rs layout)
-                    // This is a rough check; adjust based on actual layout constraints
-                    if y < (self.config.tick_rate.parse::<u64>().unwrap() as u16 / 2) { // Half the screen height as a proxy
+                    let total_height = self.config.tick_rate.parse::<u64>().unwrap() as u16;
+                    let status_panel_height = 1;
+                    let frame_width = 80; // Fixed width for now
+                    if y >= total_height - status_panel_height && x >= frame_width - 25 {
                         self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
                         self.last_node_switch = Some(Instant::now());
+                        self.seconds_until_rotation = self.node_switch_interval.as_secs();
                     }
                 }
                 _ => {}
