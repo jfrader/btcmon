@@ -13,7 +13,7 @@ use tokio::time::{self, Duration, Instant};
 
 use crate::config::{AppConfig, LndSettings};
 use crate::event::Event;
-use crate::node::widgets::BlockedParagraphWithGauge;
+use crate::node::widgets::{BlockedParagraph, BlockedParagraphWithGauge};
 use crate::node::{NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 use crate::{app::AppThread, node::NodeProvider};
@@ -176,14 +176,19 @@ impl DynamicNodeStatefulWidget for LndWidget {
             Line::raw(""),
         ];
 
-        let widget = BlockedParagraphWithGauge::new(
-            &state.title,
-            node_state.status,
-            lines,
-            state.local_balance,
-            state.capacity,
-        );
-        widget.render(area, buf);
+        if config.streamer_mode {
+            let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
+            widget.render(area, buf);
+        } else {
+            let widget = BlockedParagraphWithGauge::new(
+                &state.title,
+                node_state.status,
+                lines,
+                state.local_balance,
+                state.capacity,
+            );
+            widget.render(area, buf);
+        }
     }
 }
 
