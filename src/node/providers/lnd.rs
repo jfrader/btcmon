@@ -115,8 +115,25 @@ impl DynamicNodeStatefulWidget for LndWidget {
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Active Channels: "),
+                Span::styled(
+                    state.num_active_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Pending Channels: "),
+                Span::styled(
+                    state.num_pending_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Inactive Channels: "),
+                Span::styled(
+                    state.num_inactive_channels.to_string(),
+                    Style::new().fg(Color::White),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Synced to Bitcoin: "),
@@ -141,25 +158,8 @@ impl DynamicNodeStatefulWidget for LndWidget {
                 ),
             ]),
             Line::from(vec![
-                Span::raw("Active Channels: "),
-                Span::styled(
-                    state.num_active_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Pending Channels: "),
-                Span::styled(
-                    state.num_pending_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Inactive Channels: "),
-                Span::styled(
-                    state.num_inactive_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
+                Span::raw("Peers: "),
+                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Pending HTLCs: "),

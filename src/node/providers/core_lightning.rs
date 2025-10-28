@@ -105,10 +105,6 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                 Span::styled(state.alias.clone(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
                 Span::raw("Active Channels: "),
                 Span::styled(
                     state.num_active_channels.to_string(),
@@ -128,6 +124,10 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
                     state.num_inactive_channels.to_string(),
                     Style::new().fg(Color::White),
                 ),
+            ]),
+            Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
             ]),
             Line::from(vec![
                 Span::raw("Pending HTLCs: "),
