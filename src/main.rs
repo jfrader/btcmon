@@ -27,26 +27,25 @@ async fn main() -> AppResult<()> {
     let mut widgets: Vec<Box<dyn DynamicNodeStatefulWidget>> = vec![];
     let mut widget_states: Vec<Box<dyn DynamicState>> = vec![];
 
-    // Add legacy single providers if configured
-    if !config.bitcoin_core.host.is_empty() && !config.bitcoin_core.rpc_user.is_empty() {
-        providers.push(Box::new(BitcoinCore::new(&config.bitcoin_core)));
-        widgets.push(Box::new(BitcoinCoreWidget));
-        widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
-    }
+    if config.nodes.is_empty() {
+        if !config.bitcoin_core.host.is_empty() && !config.bitcoin_core.rpc_user.is_empty() {
+            providers.push(Box::new(BitcoinCore::new(&config.bitcoin_core)));
+            widgets.push(Box::new(BitcoinCoreWidget));
+            widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
+        }
 
-    if !config.core_lightning.rest_address.is_empty() && !config.core_lightning.rest_rune.is_empty() {
-        providers.push(Box::new(CoreLightning::new(&config.core_lightning)));
-        widgets.push(Box::new(CoreLightningWidget));
-        widget_states.push(Box::new(CoreLightningWidgetState::default()));
-    }
+        if !config.core_lightning.rest_address.is_empty() && !config.core_lightning.rest_rune.is_empty() {
+            providers.push(Box::new(CoreLightning::new(&config.core_lightning)));
+            widgets.push(Box::new(CoreLightningWidget));
+            widget_states.push(Box::new(CoreLightningWidgetState::default()));
+        }
 
-    if !config.lnd.rest_address.is_empty() && !config.lnd.macaroon_hex.is_empty() {
-        providers.push(Box::new(LndNode::new(&config.lnd)));
-        widgets.push(Box::new(LndWidget));
-        widget_states.push(Box::new(LndWidgetState::default()));
+        if !config.lnd.rest_address.is_empty() && !config.lnd.macaroon_hex.is_empty() {
+            providers.push(Box::new(LndNode::new(&config.lnd)));
+            widgets.push(Box::new(LndWidget));
+            widget_states.push(Box::new(LndWidgetState::default()));
+        }
     }
-
-    // Add multiple nodes from nodes array
     for node in &config.nodes {
         match node.provider.as_str() {
             "bitcoin_core" => {
