@@ -112,7 +112,7 @@ async fn main() -> AppResult<()> {
         match tui.events.next().await? {
             Event::Tick => app.tick(),
             Event::Key(key_event) => app.handle_key_events(key_event)?,
-            Event::Mouse(_) => {},
+            Event::Mouse(mouse_event) => app.handle_mouse_events(mouse_event)?,
             Event::Resize(_, _) => {},
             Event::PriceUpdate(state) => app.handle_price_update(state),
             Event::FeeUpdate(state) => app.handle_fee_update(state),
