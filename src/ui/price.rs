@@ -1,20 +1,20 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget};
 use tui_widgets::big_text::{BigText, PixelSize};
 
 use crate::app::AppState;
-use crate::ui::get_status_style;
 
 #[derive(Clone, Debug)]
 pub struct PriceWidgetOptions {
     pub big_text: bool,
+    pub style: Style,
 }
 
 impl Default for PriceWidgetOptions {
     fn default() -> Self {
-        PriceWidgetOptions { big_text: true }
+        PriceWidgetOptions { big_text: true, style: Style::default() }
     }
 }
 
@@ -32,8 +32,6 @@ impl StatefulWidget for PriceWidget {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let style = get_status_style(&state.node.status);
-
         let price_with_currency_lines = vec![match state.price.last_price_in_currency {
             Some(v) => vec![v.trunc().to_string(), state.price.currency.to_string()]
                 .join(" ")
@@ -46,7 +44,7 @@ impl StatefulWidget for PriceWidget {
             .title("Price")
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Plain)
-            .style(style);
+            .style(self.options.style);
 
         let price_block_area = price_block.inner(area);
         price_block.render(area, buf);
@@ -56,7 +54,7 @@ impl StatefulWidget for PriceWidget {
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
                     .pixel_size(PixelSize::Sextant)
-                    .style(style)
+                    .style(self.options.style)
                     .lines(price_with_currency_lines)
                     .build();
 
@@ -75,7 +73,7 @@ impl StatefulWidget for PriceWidget {
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
                     .pixel_size(PixelSize::Sextant)
-                    .style(style)
+                    .style(self.options.style)
                     .lines(price_lines)
                     .build();
 
@@ -86,7 +84,7 @@ impl StatefulWidget for PriceWidget {
         }
 
         Paragraph::new(price_with_currency_lines)
-            .style(Style::default().fg(Color::White))
+            .style(self.options.style)
             .alignment(Alignment::Center)
             .render(price_block_area, buf);
     }

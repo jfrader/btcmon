@@ -5,16 +5,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget};
 
 use crate::app::AppState;
-use crate::ui::get_status_style;
 
-pub struct FeesWidget;
+pub struct FeesWidget {
+    pub style: Style,
+}
 
 impl StatefulWidget for FeesWidget {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let fee_state = state.fees.result.clone();
-        let style = get_status_style(&state.node.status);
 
         let fees: Vec<Option<Line>> = vec![
             Some(Line::from(Span::raw("Priority"))),
@@ -33,7 +33,7 @@ impl StatefulWidget for FeesWidget {
                     .title_alignment(Alignment::Center)
                     .border_type(BorderType::Plain),
             )
-            .style(style);
+            .style(self.style);
 
         fees_block.render(area, buf);
     }

@@ -1,17 +1,16 @@
-// main.rs
-
 use btcmon::app::{App, AppResult, AppThread};
 use btcmon::config;
 use btcmon::event::{Event, EventHandler};
-use btcmon::node::providers::bitcoin_core::{BitcoinCore, BitcoinCoreWidget};
-use btcmon::node::providers::core_lightning::{CoreLightning, CoreLightningWidget};
-use btcmon::node::providers::lnd::{LndNode, LndWidget};
+use btcmon::node::providers::bitcoin_core::{BitcoinCore, BitcoinCoreWidget, BitcoinCoreWidgetState};
+use btcmon::node::providers::core_lightning::{CoreLightning, CoreLightningWidget, CoreLightningWidgetState};
+use btcmon::node::providers::lnd::{LndNode, LndWidget, LndWidgetState};
 use btcmon::node::NodeProvider;
 use btcmon::tui::Tui;
-use btcmon::widget::{DefaultWidgetState, DynamicNodeStatefulWidget, DynamicState};
+use btcmon::widget::{DynamicNodeStatefulWidget, DynamicState};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use std::{env, io};
+use std::env;
+use std::io;
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -24,36 +23,65 @@ async fn main() -> AppResult<()> {
     let sender_clone = sender.clone();
     let thread = AppThread::new(sender_clone);
 
-    let (provider, widget, widget_state): (
-        Box<dyn NodeProvider + Send + 'static>,
-        Box<dyn DynamicNodeStatefulWidget>,
-        Box<dyn DynamicState>,
-    ) = match config.node.provider.as_str() {
-        "bitcoin_core" => (
-            Box::new(BitcoinCore::new(&config)),
-            Box::new(BitcoinCoreWidget),
-            Box::new(DefaultWidgetState),
-        ),
-        "core_lightning" => (
-            Box::new(CoreLightning::new(&config)),
-            Box::new(CoreLightningWidget),
-            Box::new(DefaultWidgetState),
-        ),
-        "lnd" => (
-            Box::new(LndNode::new(&config)),
-            Box::new(LndWidget),
-            Box::new(DefaultWidgetState),
-        ),
-        other => {
-            eprintln!(
-                "Unknown node provider: '{}'. Expected one of: bitcoin_core, core_lightning, lnd",
-                other
-            );
-            std::process::exit(1);
-        }
-    };
+    let mut providers: Vec<Box<dyn NodeProvider + Send + 'static>> = vec![];
+    let mut widgets: Vec<Box<dyn DynamicNodeStatefulWidget>> = vec![];
+    let mut widget_states: Vec<Box<dyn DynamicState>> = vec![];
 
-    let mut app = App::new(thread, widget, widget_state);
+    // Add legacy single providers if configured
+    if !config.bitcoin_core.host.is_empty() && !config.bitcoin_core.rpc_user.is_empty() {
+        providers.push(Box::new(BitcoinCore::new(&config.bitcoin_core)));
+        widgets.push(Box::new(BitcoinCoreWidget));
+        widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
+    }
+
+    if !config.core_lightning.rest_address.is_empty() && !config.core_lightning.rest_rune.is_empty() {
+        providers.push(Box::new(CoreLightning::new(&config.core_lightning)));
+        widgets.push(Box::new(CoreLightningWidget));
+        widget_states.push(Box::new(CoreLightningWidgetState::default()));
+    }
+
+    if !config.lnd.rest_address.is_empty() && !config.lnd.macaroon_hex.is_empty() {
+        providers.push(Box::new(LndNode::new(&config.lnd)));
+        widgets.push(Box::new(LndWidget));
+        widget_states.push(Box::new(LndWidgetState::default()));
+    }
+
+    // Add multiple nodes from nodes array
+    for node in &config.nodes {
+        match node.provider.as_str() {
+            "bitcoin_core" => {
+                if let Some(settings) = &node.bitcoin_core {
+                    providers.push(Box::new(BitcoinCore::new(settings)));
+                    widgets.push(Box::new(BitcoinCoreWidget));
+                    widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
+                }
+            }
+            "core_lightning" => {
+                if let Some(settings) = &node.core_lightning {
+                    providers.push(Box::new(CoreLightning::new(settings)));
+                    widgets.push(Box::new(CoreLightningWidget));
+                    widget_states.push(Box::new(CoreLightningWidgetState::default()));
+                }
+            }
+            "lnd" => {
+                if let Some(settings) = &node.lnd {
+                    providers.push(Box::new(LndNode::new(settings)));
+                    widgets.push(Box::new(LndWidget));
+                    widget_states.push(Box::new(LndWidgetState::default()));
+                }
+            }
+            other => {
+                eprintln!("Unknown node provider: '{}'.", other);
+            }
+        }
+    }
+
+    if providers.is_empty() {
+        eprintln!("No node providers configured.");
+        std::process::exit(1);
+    }
+
+    let mut app = App::new(thread, widgets, widget_states, config.clone());
 
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
@@ -67,7 +95,10 @@ async fn main() -> AppResult<()> {
     tui.init()?;
     tui.draw(&config, &mut app)?;
 
-    app.init_node(provider);
+    // Initialize all nodes
+    for (i, provider) in providers.into_iter().enumerate() {
+        app.nodes[i].init(provider, i);
+    }
 
     if config.price.enabled {
         app.init_price();
@@ -82,12 +113,12 @@ async fn main() -> AppResult<()> {
         match tui.events.next().await? {
             Event::Tick => app.tick(),
             Event::Key(key_event) => app.handle_key_events(key_event)?,
-            Event::Mouse(_) => {}
-            Event::Resize(_, _) => {}
+            Event::Mouse(_) => {},
+            Event::Resize(_, _) => {},
             Event::PriceUpdate(state) => app.handle_price_update(state),
             Event::FeeUpdate(state) => app.handle_fee_update(state),
-            Event::NodeUpdate(update_fn) => {
-                app.handle_node_update(update_fn.as_ref());
+            Event::NodeUpdate(index, update_fn) => {
+                app.handle_node_update(index, update_fn.as_ref());
             }
         }
     }

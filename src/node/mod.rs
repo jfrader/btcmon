@@ -5,7 +5,6 @@ pub mod widgets;
 
 use crate::{
     app::AppThread,
-    config::AppConfig,
     widget::{DefaultWidgetState, DynamicState},
 };
 use anyhow::Result;
@@ -20,8 +19,7 @@ use ratatui::{
 use std::{
     collections::HashMap,
     fmt,
-    marker::Sized,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, time::Duration,
 };
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
@@ -119,6 +117,24 @@ impl NodeState {
         self.service_display_index = service_display_index;
     }
 
+    pub fn tick(&mut self) {
+        let now = Instant::now();
+        let switch_interval = Duration::from_secs(3);
+        let keys: Vec<_> = self.services.keys().cloned().collect();
+
+        if !keys.is_empty() {
+            let should_advance = match self.last_service_switch {
+                Some(last) => now.duration_since(last) >= switch_interval,
+                None => true,
+            };
+
+            if should_advance {
+                let new_index = (self.service_display_index + 1) % keys.len();
+                self.set_last_service_switch(Some(now), new_index);
+            }
+        }
+    }
+
     pub fn draw_new_block_popup(&self, frame: &mut Frame, block_height: u64) {
         let sized_paragraph = SizedWrapper {
             inner: Paragraph::new(vec![
@@ -141,10 +157,7 @@ impl NodeState {
 
 #[async_trait]
 pub trait NodeProvider {
-    fn new(config: &AppConfig) -> Self
-    where
-        Self: Sized;
-    async fn init(&mut self, thread: AppThread) -> Result<()>;
+    async fn init(&mut self, thread: AppThread, index: usize) -> Result<()>;
 }
 
 pub struct Node {
@@ -160,7 +173,7 @@ impl Node {
         }
     }
 
-    pub fn init(&mut self, mut provider: Box<dyn NodeProvider + Send + 'static>) {
+    pub fn init(&mut self, mut provider: Box<dyn NodeProvider + Send + 'static>, index: usize) {
         if let Some(handler) = &self.handler {
             handler.abort();
         }
@@ -169,8 +182,8 @@ impl Node {
         let thread = self.thread.clone();
         self.handler = Some(self.thread.tracker.spawn(async move {
             tokio::select! {
-                _ = provider.init(thread) => {},
-                () = token.cancelled() => {},
+                _ = provider.init(thread, index) => {},
+                _ = token.cancelled() => {},
             }
         }));
     }

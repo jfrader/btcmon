@@ -11,11 +11,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
+use crate::config::LndSettings;
 use crate::event::Event;
 use crate::node::widgets::BlockedParagraphWithGauge;
 use crate::node::{NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{app::AppThread, config::AppConfig, node::NodeProvider};
+use crate::{app::AppThread, node::NodeProvider};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
@@ -182,6 +183,19 @@ impl DynamicNodeStatefulWidget for LndWidget {
 }
 
 impl LndNode {
+    pub fn new(settings: &LndSettings) -> Self {
+        let client = Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+
+        Self {
+            address: settings.rest_address.clone(),
+            macaroon: settings.macaroon_hex.clone(),
+            client: Arc::new(client),
+        }
+    }
+
     async fn get_channels(&self) -> Result<ChannelsResponse> {
         let url = format!("{}/v1/channels", self.address);
         let resp = self
@@ -205,7 +219,7 @@ impl LndNode {
         Ok(channels)
     }
 
-    async fn get_node_info(&self, sender: UnboundedSender<Event>) -> Result<()> {
+    async fn get_node_info(&self, sender: UnboundedSender<Event>, index: usize) -> Result<()> {
         let url = format!("{}/v1/getinfo", self.address);
 
         let response_result = self
@@ -219,10 +233,13 @@ impl LndNode {
             Ok(resp) => {
                 let status = resp.status();
                 if !status.is_success() {
-                    let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                        state.message = format!("LND REST error: HTTP {}", status);
-                        state
-                    })));
+                    let _ = sender.send(Event::NodeUpdate(
+                        index,
+                        Arc::new(move |mut state| {
+                            state.message = format!("LND REST error: HTTP {}", status);
+                            state
+                        }),
+                    ));
                     return Err(anyhow::anyhow!("LND REST non-200: {}", status));
                 }
 
@@ -264,93 +281,84 @@ impl LndNode {
                     NodeStatus::Synchronizing
                 };
 
-                let _ = sender.send(Event::NodeUpdate(Arc::new(move |mut state| {
-                    let widget_state = state
-                        .widget_state
-                        .as_any()
-                        .downcast_ref::<LndWidgetState>()
-                        .unwrap();
+                let _ = sender.send(Event::NodeUpdate(
+                    index,
+                    Arc::new(move |mut state| {
+                        let widget_state = state
+                            .widget_state
+                            .as_any()
+                            .downcast_ref::<LndWidgetState>()
+                            .unwrap();
 
-                    if state.height > 0 && state.height < info.block_height {
-                        state.last_hash_instant = Some(Instant::now());
-                    }
+                        if state.height > 0 && state.height < info.block_height {
+                            state.last_hash_instant = Some(Instant::now());
+                        }
 
-                    state.message = "".to_string();
-                    state.status = new_status;
-                    state.height = info.block_height;
-                    *state
-                        .services
-                        .entry("REST".to_string())
-                        .or_insert(NodeStatus::Online) = NodeStatus::Online;
-                    state.widget_state = Box::new(LndWidgetState {
-                        title: widget_state.title.clone(),
-                        alias: info.alias.clone(),
-                        num_peers: info.num_peers,
-                        num_pending_channels: info.num_pending_channels,
-                        num_active_channels: info.num_active_channels,
-                        num_inactive_channels: info.num_inactive_channels,
-                        capacity,
-                        local_balance,
-                        remote_balance,
-                        synced_to_chain: info.synced_to_chain,
-                        synced_to_graph: info.synced_to_graph,
-                        num_pending_htlcs,
-                    });
-                    state
-                })));
+                        state.message = "".to_string();
+                        state.status = new_status;
+                        state.height = info.block_height;
+                        *state
+                            .services
+                            .entry("REST".to_string())
+                            .or_insert(NodeStatus::Online) = NodeStatus::Online;
+                        state.widget_state = Box::new(LndWidgetState {
+                            title: widget_state.title.clone(),
+                            alias: info.alias.clone(),
+                            num_peers: info.num_peers,
+                            num_pending_channels: info.num_pending_channels,
+                            num_active_channels: info.num_active_channels,
+                            num_inactive_channels: info.num_inactive_channels,
+                            capacity,
+                            local_balance,
+                            remote_balance,
+                            synced_to_chain: info.synced_to_chain,
+                            synced_to_graph: info.synced_to_graph,
+                            num_pending_htlcs,
+                        });
+                        state
+                    }),
+                ));
 
                 Ok(())
             }
             Err(e) => {
-                let _ = sender.send(Event::NodeUpdate(Arc::new(|mut state| {
-                    state.status = NodeStatus::Offline;
-                    *state
-                        .services
-                        .entry("REST".to_string())
-                        .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
-                    state
-                })));
+                let _ = sender.send(Event::NodeUpdate(
+                    index,
+                    Arc::new(|mut state| {
+                        state.status = NodeStatus::Offline;
+                        *state
+                            .services
+                            .entry("REST".to_string())
+                            .or_insert(NodeStatus::Offline) = NodeStatus::Offline;
+                        state
+                    }),
+                ));
                 Err(anyhow::anyhow!("Request error: {}", e))
             }
         }
     }
-    async fn check_node_status(&self, sender: UnboundedSender<Event>) -> Result<()> {
-        self.get_node_info(sender).await
+    async fn check_node_status(&self, sender: UnboundedSender<Event>, index: usize) -> Result<()> {
+        self.get_node_info(sender, index).await
     }
 }
 
 #[async_trait]
 impl NodeProvider for LndNode {
-    fn new(config: &AppConfig) -> Self {
-        let address = config.lnd.rest_address.clone();
-        let macaroon = config.lnd.macaroon_hex.clone();
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
-            .build()
-            .unwrap();
-
-        Self {
-            address,
-            macaroon,
-            client: Arc::new(client),
-        }
-    }
-
-    async fn init(&mut self, thread: AppThread) -> Result<()> {
+    async fn init(&mut self, thread: AppThread, index: usize) -> Result<()> {
         let check_interval = Duration::from_secs(15);
 
         let host = self.address.clone();
 
-        let _ = thread
-            .sender
-            .send(Event::NodeUpdate(Arc::new(move |mut state| {
+        let _ = thread.sender.send(Event::NodeUpdate(
+            index,
+            Arc::new(move |mut state| {
                 state.host = host.clone();
                 state.message = "Initializing LND REST...".to_string();
                 state
                     .services
                     .insert("REST".to_string(), NodeStatus::Offline);
                 state.widget_state = Box::new(LndWidgetState {
-                    title: "LND".to_string(),
+                    title: format!("LND ({})", host),
                     alias: "".to_string(),
                     num_peers: 0,
                     num_pending_channels: 0,
@@ -364,14 +372,15 @@ impl NodeProvider for LndNode {
                     num_pending_htlcs: 0,
                 });
                 state
-            })));
+            }),
+        ));
 
         loop {
             if thread.token.is_cancelled() {
                 break;
             }
 
-            let _ = self.check_node_status(thread.sender.clone()).await;
+            let _ = self.check_node_status(thread.sender.clone(), index).await;
 
             time::sleep(check_interval).await;
         }

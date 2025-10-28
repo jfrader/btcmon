@@ -52,7 +52,7 @@ impl<B: Backend> Tui<B> {
     /// [`Draw`]: ratatui::Terminal::draw
     /// [`rendering`]: crate::ui::render
     pub fn draw(&mut self, config: &AppConfig, app: &mut App) -> AppResult<()> {
-        self.terminal.draw(|frame| ui::render(config, &mut app.state, frame))?;
+        self.terminal.draw(|frame| ui::render(config, app, frame))?;
         Ok(())
     }
 

@@ -1,9 +1,11 @@
+// config.rs
+
 use argmap::List;
 use config::{Config, ConfigError, File};
 use serde_derive::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 #[allow(unused)]
 pub struct BitcoinCoreSettings {
     pub host: String,
@@ -13,12 +15,20 @@ pub struct BitcoinCoreSettings {
     pub zmq_port: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 #[allow(unused)]
 pub struct CoreLightningSettings {
     pub rest_address: String,
     pub rest_rune: String,
 }
+
+#[derive(Debug, Deserialize, Clone, Default)]
+#[allow(unused)]
+pub struct LndSettings {
+    pub rest_address: String,
+    pub macaroon_hex: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct PriceSettings {
@@ -35,8 +45,11 @@ pub struct FeesSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
-pub struct NodeSettings {
+pub struct NodeConfig {
     pub provider: String,
+    pub bitcoin_core: Option<BitcoinCoreSettings>,
+    pub core_lightning: Option<CoreLightningSettings>,
+    pub lnd: Option<LndSettings>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -48,14 +61,8 @@ pub struct AppConfig {
     pub bitcoin_core: BitcoinCoreSettings,
     pub core_lightning: CoreLightningSettings,
     pub lnd: LndSettings,
-    pub node: NodeSettings,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
-pub struct LndSettings {
-    pub rest_address: String,
-    pub macaroon_hex: String,
+    #[serde(default)]
+    pub nodes: Vec<NodeConfig>,
 }
 
 fn match_string_to_bool(value: &str) -> bool {
@@ -74,8 +81,6 @@ impl AppConfig {
         let mut s = Config::builder()
             // general
             .set_default("tick_rate", 250)?
-            // node provider default
-            .set_default("node.provider", "bitcoin_core")?
             // bitcoin core defaults
             .set_default("bitcoin_core.host", "localhost")?
             .set_default("bitcoin_core.rpc_port", 8332)?
