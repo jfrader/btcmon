@@ -60,7 +60,6 @@ enabled = true
 
 ## Screenshot
 
-![btcmon](share/screenshots/demo.gif?raw=true)
 ![btcmon](share/screenshots/btcmon.png?raw=true)
 
 ## License
