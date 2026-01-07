@@ -41,12 +41,13 @@ impl StatefulWidget for PriceWidget {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let price_with_currency_lines = vec![match state.price.last_price_in_currency {
-            Some(v) => vec![v.trunc().to_string(), state.price.currency.to_string()]
-                .join(" ")
-                .into(),
-            None => "...".into(),
-        }];
+        let price_with_currency_lines = match state.price.last_price_in_currency {
+            Some(v) => vec![
+                v.trunc().to_string().into(),
+                state.price.currency.to_string().into(),
+            ],
+            None => vec!["...".into()],
+        };
 
         let price_block = Block::bordered()
             .title(self.options.title)
@@ -74,23 +75,15 @@ impl StatefulWidget for PriceWidget {
 
                 return;
             } else if area.width > 24 {
-                let price_lines = match state.price.last_price_in_currency {
-                    Some(v) => vec![
-                        v.trunc().to_string().into(),
-                        state.price.currency.to_string().into(),
-                    ],
-                    None => vec!["...".into()],
-                };
-
                 let content_area = centered_area(
                     price_block_area,
-                    big_text_height(price_lines.len(), self.options.pixel_size),
+                    big_text_height(price_with_currency_lines.len(), self.options.pixel_size),
                 );
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
                     .pixel_size(self.options.pixel_size)
                     .style(self.options.price_style)
-                    .lines(price_lines)
+                    .lines(price_with_currency_lines.clone())
                     .build();
 
                 big_text.render(content_area, buf);
