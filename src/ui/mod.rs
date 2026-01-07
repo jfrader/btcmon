@@ -20,10 +20,11 @@ pub mod node;
 pub mod price;
 
 pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
+    let price_block_style = get_price_block_style(&app.state);
     if app.nodes.is_empty() || app.state.node_states.is_empty() {
         let price_widget = PriceWidget::new(PriceWidgetOptions {
             big_text: config.price.big_text,
-            style: Style::default(),
+            style: price_block_style,
             pixel_size: tui_widgets::big_text::PixelSize::Full,
             price_style: get_price_style(config, &app.state),
             title: "Bitcoin Price".to_string(),
@@ -72,7 +73,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
 
     let price_widget = PriceWidget::new(PriceWidgetOptions {
         big_text: config.price.big_text,
-        style,
+        style: price_block_style,
         pixel_size: tui_widgets::big_text::PixelSize::Sextant,
         price_style: get_price_style(config, &app.state),
         title: "Price".to_string(),
@@ -168,5 +169,12 @@ fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
         Style::default().fg(Color::Red)
     } else {
         Style::default().fg(Color::White)
+    }
+}
+
+fn get_price_block_style(state: &crate::app::AppState) -> Style {
+    match state.price.last_price_in_currency {
+        Some(_) => Style::default().fg(Color::Green),
+        None => Style::default().fg(Color::Red),
     }
 }
