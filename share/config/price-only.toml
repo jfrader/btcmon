@@ -5,6 +5,8 @@ streamer_mode = false
 enabled = true
 currency = "USD"
 big_text = true
+variation = "minute"
+variation_threshold = 0.0
 
 [fees]
 enabled = false

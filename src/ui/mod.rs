@@ -13,6 +13,7 @@ use ratatui::{
     style::{Color, Style},
     Frame,
 };
+use tokio::time::Instant;
 
 pub mod fees;
 pub mod node;
@@ -24,6 +25,8 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
             big_text: config.price.big_text,
             style: Style::default(),
             pixel_size: tui_widgets::big_text::PixelSize::Full,
+            price_style: get_price_style(config, &app.state),
+            title: "Bitcoin Price".to_string(),
         });
         frame.render_stateful_widget(price_widget, frame.area(), &mut app.state);
         return;
@@ -71,6 +74,8 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         big_text: config.price.big_text,
         style,
         pixel_size: tui_widgets::big_text::PixelSize::Sextant,
+        price_style: get_price_style(config, &app.state),
+        title: "Price".to_string(),
     });
 
     let fees_widget = FeesWidget { style };
@@ -117,5 +122,51 @@ pub fn get_status_style(status: &NodeStatus) -> Style {
         NodeStatus::Offline => Style::default().fg(Color::Red),
         NodeStatus::Synchronizing => Style::default().fg(Color::Yellow),
         NodeStatus::Connecting => Style::default().fg(Color::Blue),
+    }
+}
+
+fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
+    let Some(current) = state.price.last_price_in_currency else {
+        return Style::default().fg(Color::White);
+    };
+
+    let window = match config.price.variation.as_str() {
+        "minute" => std::time::Duration::from_secs(60),
+        "hour" => std::time::Duration::from_secs(60 * 60),
+        "day" => std::time::Duration::from_secs(60 * 60 * 24),
+        _ => std::time::Duration::from_secs(60),
+    };
+
+    let now = Instant::now();
+    let cutoff = now.checked_sub(window).unwrap_or(now);
+    let mut reference = None;
+    for (timestamp, price) in state.price_history.iter() {
+        if *timestamp <= cutoff {
+            reference = Some(*price);
+        } else {
+            break;
+        }
+    }
+    if reference.is_none() {
+        reference = state.price_history.front().map(|(_, price)| *price);
+    }
+
+    let Some(reference) = reference else {
+        return Style::default().fg(Color::White);
+    };
+    if reference == 0.0 {
+        return Style::default().fg(Color::White);
+    }
+
+    let change_pct = (current - reference) / reference * 100.0;
+    let threshold = config.price.variation_threshold.abs();
+    if change_pct.abs() < threshold {
+        Style::default().fg(Color::White)
+    } else if change_pct > 0.0 {
+        Style::default().fg(Color::Green)
+    } else if change_pct < 0.0 {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::White)
     }
 }

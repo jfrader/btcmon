@@ -11,6 +11,8 @@ pub struct PriceWidgetOptions {
     pub big_text: bool,
     pub style: Style,
     pub pixel_size: PixelSize,
+    pub price_style: Style,
+    pub title: String,
 }
 
 impl Default for PriceWidgetOptions {
@@ -19,6 +21,8 @@ impl Default for PriceWidgetOptions {
             big_text: true,
             style: Style::default(),
             pixel_size: PixelSize::Sextant,
+            price_style: Style::default(),
+            title: "Price".to_string(),
         }
     }
 }
@@ -45,7 +49,7 @@ impl StatefulWidget for PriceWidget {
         }];
 
         let price_block = Block::bordered()
-            .title("Price")
+            .title(self.options.title)
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Plain)
             .style(self.options.style);
@@ -62,7 +66,7 @@ impl StatefulWidget for PriceWidget {
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
                     .pixel_size(self.options.pixel_size)
-                    .style(self.options.style)
+                    .style(self.options.price_style)
                     .lines(price_with_currency_lines)
                     .build();
 
@@ -85,7 +89,7 @@ impl StatefulWidget for PriceWidget {
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
                     .pixel_size(self.options.pixel_size)
-                    .style(self.options.style)
+                    .style(self.options.price_style)
                     .lines(price_lines)
                     .build();
 
@@ -97,7 +101,7 @@ impl StatefulWidget for PriceWidget {
 
         let content_area = centered_area(price_block_area, price_with_currency_lines.len() as u16);
         Paragraph::new(price_with_currency_lines)
-            .style(self.options.style)
+            .style(self.options.price_style)
             .alignment(Alignment::Center)
             .render(content_area, buf);
     }

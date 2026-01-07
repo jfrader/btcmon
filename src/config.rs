@@ -33,6 +33,8 @@ pub struct PriceSettings {
     pub enabled: bool,
     pub currency: String,
     pub big_text: bool,
+    pub variation: String,
+    pub variation_threshold: f64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -99,6 +101,8 @@ impl AppConfig {
             .set_default("price.enabled", true)?
             .set_default("price.big_text", true)?
             .set_default("price.currency", "USD")?
+            .set_default("price.variation", "minute")?
+            .set_default("price.variation_threshold", 0.0)?
             // fees
             .set_default("fees.enabled", true)?;
 
