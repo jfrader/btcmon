@@ -52,6 +52,8 @@ macaroon_hex = "replaceme"
 enabled = true
 currency = "USD"
 big_text = true
+variation = "minute"
+variation_threshold = 0.0
 
 [fees]
 enabled = true

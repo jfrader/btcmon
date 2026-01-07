@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use std::collections::VecDeque;
 use std::error;
 use std::str::FromStr;
 use tokio::sync::mpsc;
@@ -40,6 +41,7 @@ pub struct AppState {
     pub price: PriceState,
     pub fees: FeesState,
     pub node_states: Vec<NodeState>,
+    pub price_history: VecDeque<(Instant, f64)>,
 }
 
 pub struct App {
@@ -81,6 +83,7 @@ impl App {
                 counter: 0,
                 price: PriceState::new(),
                 fees: FeesState::new(),
+                price_history: VecDeque::new(),
                 node_states: widget_states
                     .into_iter()
                     .map(|ws| {
@@ -150,6 +153,18 @@ impl App {
 
     pub fn handle_price_update(&mut self, state: PriceState) {
         self.state.price = state;
+        let now = Instant::now();
+        if let Some(price) = self.state.price.last_price_in_currency {
+            self.state.price_history.push_back((now, price));
+            let max_age = Duration::from_secs(60 * 60 * 24);
+            while let Some((timestamp, _)) = self.state.price_history.front() {
+                if now.duration_since(*timestamp) > max_age {
+                    self.state.price_history.pop_front();
+                } else {
+                    break;
+                }
+            }
+        }
     }
 
     pub fn handle_node_update(
