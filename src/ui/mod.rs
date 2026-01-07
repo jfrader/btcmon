@@ -23,6 +23,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         let price_widget = PriceWidget::new(PriceWidgetOptions {
             big_text: config.price.big_text,
             style: Style::default(),
+            pixel_size: tui_widgets::big_text::PixelSize::Full,
         });
         frame.render_stateful_widget(price_widget, frame.area(), &mut app.state);
         return;
@@ -69,6 +70,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
     let price_widget = PriceWidget::new(PriceWidgetOptions {
         big_text: config.price.big_text,
         style,
+        pixel_size: tui_widgets::big_text::PixelSize::Sextant,
     });
 
     let fees_widget = FeesWidget { style };

@@ -10,11 +10,16 @@ use crate::app::AppState;
 pub struct PriceWidgetOptions {
     pub big_text: bool,
     pub style: Style,
+    pub pixel_size: PixelSize,
 }
 
 impl Default for PriceWidgetOptions {
     fn default() -> Self {
-        PriceWidgetOptions { big_text: true, style: Style::default() }
+        PriceWidgetOptions {
+            big_text: true,
+            style: Style::default(),
+            pixel_size: PixelSize::Sextant,
+        }
     }
 }
 
@@ -52,11 +57,11 @@ impl StatefulWidget for PriceWidget {
             if area.width > 48 {
                 let content_area = centered_area(
                     price_block_area,
-                    big_text_height(price_with_currency_lines.len(), PixelSize::Sextant),
+                    big_text_height(price_with_currency_lines.len(), self.options.pixel_size),
                 );
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
-                    .pixel_size(PixelSize::Sextant)
+                    .pixel_size(self.options.pixel_size)
                     .style(self.options.style)
                     .lines(price_with_currency_lines)
                     .build();
@@ -75,11 +80,11 @@ impl StatefulWidget for PriceWidget {
 
                 let content_area = centered_area(
                     price_block_area,
-                    big_text_height(price_lines.len(), PixelSize::Sextant),
+                    big_text_height(price_lines.len(), self.options.pixel_size),
                 );
                 let big_text = BigText::builder()
                     .alignment(Alignment::Center)
-                    .pixel_size(PixelSize::Sextant)
+                    .pixel_size(self.options.pixel_size)
                     .style(self.options.style)
                     .lines(price_lines)
                     .build();
