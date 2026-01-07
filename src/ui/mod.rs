@@ -19,6 +19,15 @@ pub mod node;
 pub mod price;
 
 pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
+    if app.nodes.is_empty() || app.state.node_states.is_empty() {
+        let price_widget = PriceWidget::new(PriceWidgetOptions {
+            big_text: config.price.big_text,
+            style: Style::default(),
+        });
+        frame.render_stateful_widget(price_widget, frame.area(), &mut app.state);
+        return;
+    }
+
     let current_index = app.current_node_index;
 
     let (layout_constraints, status_panel_i): (Vec<Constraint>, usize) =

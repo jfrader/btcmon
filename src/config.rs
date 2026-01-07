@@ -108,21 +108,23 @@ impl AppConfig {
             (true, false) => argv
                 .get("c")
                 .and_then(|v| Some(v.first().unwrap().as_str()))
-                .unwrap(),
+                .unwrap()
+                .to_string(),
             (false, true) | (true, true) => argv
                 .get("config")
                 .and_then(|v| Some(v.first().unwrap().as_str()))
-                .unwrap(),
+                .unwrap()
+                .to_string(),
             _ => match home_path {
                 Some(home_path) => {
                     default_config_file = vec![home_path, "/.btcmon/btcmon.toml"].join("");
-                    default_config_file.as_str()
+                    default_config_file
                 }
-                _ => default_config_file.as_str(),
+                _ => default_config_file,
             },
         };
 
-        s = s.add_source(File::with_name(config_file).required(false));
+        s = s.add_source(File::with_name(&config_file).required(false));
 
         let args = argv.clone();
         for key in argv.into_keys() {
@@ -142,6 +144,29 @@ impl AppConfig {
         }
 
         let mut config: AppConfig = s.build()?.try_deserialize()?;
+
+        let has_node_args = args.keys().any(|key| {
+            key.starts_with("bitcoin_core.")
+                || key.starts_with("core_lightning.")
+                || key.starts_with("lnd.")
+                || key.starts_with("nodes")
+                || key.starts_with("node.")
+        });
+        let file_has_node_settings = std::fs::read_to_string(&config_file)
+            .map(|contents| {
+                contents.contains("[bitcoin_core]")
+                    || contents.contains("[core_lightning]")
+                    || contents.contains("[lnd]")
+                    || contents.contains("[nodes]")
+                    || contents.contains("[node]")
+            })
+            .unwrap_or(false);
+
+        if config.nodes.is_empty() && !has_node_args && !file_has_node_settings {
+            config.bitcoin_core = BitcoinCoreSettings::default();
+            config.core_lightning = CoreLightningSettings::default();
+            config.lnd = LndSettings::default();
+        }
 
         // Clear legacy providers if nodes array is used
         if !config.nodes.is_empty() {

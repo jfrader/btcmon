@@ -1,0 +1,10 @@
+tick_rate = 250
+streamer_mode = false
+
+[price]
+enabled = true
+currency = "USD"
+big_text = true
+
+[fees]
+enabled = false

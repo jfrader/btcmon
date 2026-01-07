@@ -31,6 +31,8 @@ async fn main() -> AppResult<()> {
     let mut widgets: Vec<Box<dyn DynamicNodeStatefulWidget>> = vec![];
     let mut widget_states: Vec<Box<dyn DynamicState>> = vec![];
 
+    let mut price_only = false;
+
     // Use nodes from config.nodes if present, otherwise use single node configuration
     if !config.nodes.is_empty() {
         for node in &config.nodes {
@@ -68,7 +70,6 @@ async fn main() -> AppResult<()> {
             }
         }
     } else {
-        // Use single node configuration, prioritizing lnd
         if !config.lnd.rest_address.is_empty() {
             providers.push(Box::new(LndNode::new(&config.lnd)));
             widgets.push(Box::new(LndWidget));
@@ -82,14 +83,22 @@ async fn main() -> AppResult<()> {
             widgets.push(Box::new(BitcoinCoreWidget));
             widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
         } else {
-            eprintln!("No nodes or single node configuration found.");
-            std::process::exit(1);
+            price_only = true;
         }
     }
 
     if providers.is_empty() {
-        eprintln!("No valid nodes configured.");
-        std::process::exit(1);
+        let no_node_config = config.nodes.is_empty()
+            && config.lnd.rest_address.is_empty()
+            && config.core_lightning.rest_address.is_empty()
+            && config.bitcoin_core.host.is_empty();
+
+        if no_node_config {
+            price_only = true;
+        } else {
+            eprintln!("No valid nodes configured.");
+            std::process::exit(1);
+        }
     }
 
     let mut app = App::new(thread, widgets, widget_states, config.clone());
@@ -111,11 +120,11 @@ async fn main() -> AppResult<()> {
         app.nodes[i].init(provider, i);
     }
 
-    if config.price.enabled {
+    if config.price.enabled || price_only {
         app.init_price();
     }
 
-    if config.fees.enabled {
+    if config.fees.enabled && !price_only {
         app.init_fees();
     }
 
