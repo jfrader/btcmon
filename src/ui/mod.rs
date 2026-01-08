@@ -9,8 +9,10 @@ use crate::{
     },
 };
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style},
+    widgets::Widget,
+    widgets::Paragraph,
     Frame,
 };
 use tokio::time::Instant;
@@ -22,14 +24,27 @@ pub mod price;
 pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
     let price_block_style = get_price_block_style(&app.state);
     if app.nodes.is_empty() || app.state.node_states.is_empty() {
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Min(0), Constraint::Length(1)])
+            .split(frame.area());
+
         let price_widget = PriceWidget::new(PriceWidgetOptions {
             big_text: config.price.big_text,
             style: price_block_style,
             pixel_size: tui_widgets::big_text::PixelSize::Full,
-            price_style: get_price_style(config, &app.state),
+            price_style: Style::default().fg(Color::White),
             title: "Bitcoin Price".to_string(),
         });
-        frame.render_stateful_widget(price_widget, frame.area(), &mut app.state);
+
+        frame.render_stateful_widget(price_widget, layout[0], &mut app.state);
+
+        let (status_text, status_style) = get_price_variation_text(config, &app.state);
+        Paragraph::new(status_text)
+            .style(status_style)
+            .alignment(Alignment::Right)
+            .render(layout[1], frame.buffer_mut());
+
         return;
     }
 
@@ -75,7 +90,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         big_text: config.price.big_text,
         style: price_block_style,
         pixel_size: tui_widgets::big_text::PixelSize::Sextant,
-        price_style: get_price_style(config, &app.state),
+        price_style: Style::default().fg(Color::White),
         title: "Price".to_string(),
     });
 
@@ -127,17 +142,39 @@ pub fn get_status_style(status: &NodeStatus) -> Style {
 }
 
 fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
-    let Some(current) = state.price.last_price_in_currency else {
+    let Some((change_pct, _label)) = get_price_variation(config, state) else {
         return Style::default().fg(Color::White);
     };
 
-    let window = match config.price.variation.as_str() {
-        "minute" => std::time::Duration::from_secs(60),
-        "hour" => std::time::Duration::from_secs(60 * 60),
-        "day" => std::time::Duration::from_secs(60 * 60 * 24),
-        _ => std::time::Duration::from_secs(60),
+    let threshold = config.price.variation_threshold.abs();
+    if change_pct.abs() < threshold {
+        Style::default().fg(Color::White)
+    } else if change_pct > 0.0 {
+        Style::default().fg(Color::Green)
+    } else if change_pct < 0.0 {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::White)
+    }
+}
+
+fn get_price_variation_text(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
+    let style = get_price_style(config, state);
+    match get_price_variation(config, state) {
+        Some((change_pct, label)) => (format!("{:+.2}% ({})", change_pct, label), style),
+        None => ("Price change: --".to_string(), Style::default().fg(Color::White)),
+    }
+}
+
+fn get_price_variation(
+    config: &AppConfig,
+    state: &crate::app::AppState,
+) -> Option<(f64, String)> {
+    let Some(current) = state.price.last_price_in_currency else {
+        return None;
     };
 
+    let (window, label) = price_variation_window(config);
     let now = Instant::now();
     let cutoff = now.checked_sub(window).unwrap_or(now);
     let mut reference = None;
@@ -152,23 +189,21 @@ fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
         reference = state.price_history.front().map(|(_, price)| *price);
     }
 
-    let Some(reference) = reference else {
-        return Style::default().fg(Color::White);
-    };
+    let reference = reference?;
     if reference == 0.0 {
-        return Style::default().fg(Color::White);
+        return None;
     }
 
     let change_pct = (current - reference) / reference * 100.0;
-    let threshold = config.price.variation_threshold.abs();
-    if change_pct.abs() < threshold {
-        Style::default().fg(Color::White)
-    } else if change_pct > 0.0 {
-        Style::default().fg(Color::Green)
-    } else if change_pct < 0.0 {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default().fg(Color::White)
+    Some((change_pct, label))
+}
+
+fn price_variation_window(config: &AppConfig) -> (std::time::Duration, String) {
+    match config.price.variation.as_str() {
+        "minute" => (std::time::Duration::from_secs(60), "minute".to_string()),
+        "hour" => (std::time::Duration::from_secs(60 * 60), "hour".to_string()),
+        "day" => (std::time::Duration::from_secs(60 * 60 * 24), "day".to_string()),
+        other => (std::time::Duration::from_secs(60), other.to_string()),
     }
 }
 
