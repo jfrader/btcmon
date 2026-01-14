@@ -5,8 +5,9 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
@@ -51,6 +52,43 @@ struct ChannelsResponse {
     channels: Vec<ChannelResponse>,
 }
 
+fn parse_watchtower_count(value: &Value) -> Option<u32> {
+    value
+        .get("towers")
+        .and_then(|towers| towers.as_array())
+        .map(|towers| towers.len() as u32)
+        .or_else(|| {
+            value
+                .get("watchtowers")
+                .and_then(|towers| towers.as_array())
+                .map(|towers| towers.len() as u32)
+        })
+        .or_else(|| {
+            value
+                .get("towers")
+                .and_then(|towers| towers.as_object())
+                .and_then(|towers| {
+                    towers
+                        .get("towers")
+                        .and_then(|nested| nested.as_array())
+                        .map(|nested| nested.len() as u32)
+                        .or_else(|| Some(towers.len() as u32))
+                })
+        })
+        .or_else(|| {
+            value
+                .get("tower")
+                .and_then(|towers| towers.as_array())
+                .map(|towers| towers.len() as u32)
+        })
+        .or_else(|| {
+            value
+                .get("num_towers")
+                .and_then(|count| count.as_u64())
+                .map(|count| count as u32)
+        })
+}
+
 #[derive(Clone)]
 pub struct LndNode {
     address: String,
@@ -72,6 +110,9 @@ pub struct LndWidgetState {
     pub synced_to_chain: bool,
     pub synced_to_graph: bool,
     pub num_pending_htlcs: u64,
+    pub num_watchtowers: Option<u32>,
+    pub watchtower_status: Option<String>,
+    pub watchtower_server_online: Option<bool>,
 }
 
 impl DynamicState for LndWidgetState {
@@ -112,69 +153,72 @@ impl DynamicNodeStatefulWidget for LndWidget {
             true => "****".to_string(),
             false => state.alias.clone(),
         };
-
-        let lines = vec![
-            block_height,
-            Line::from(vec![
-                Span::raw("Alias: "),
-                Span::styled(alias_text, Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::raw("Active Channels: "),
-                Span::styled(
-                    state.num_active_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Pending Channels: "),
-                Span::styled(
-                    state.num_pending_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Inactive Channels: "),
-                Span::styled(
-                    state.num_inactive_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Synced to Bitcoin: "),
-                Span::styled(
-                    if state.synced_to_chain {
-                        "True"
-                    } else {
-                        "False"
-                    },
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Synced to Lightning: "),
-                Span::styled(
-                    if state.synced_to_graph {
-                        "True"
-                    } else {
-                        "False"
-                    },
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::raw("Pending HTLCs: "),
-                Span::styled(
-                    state.num_pending_htlcs.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::raw(""),
-        ];
+        let mut lines = Vec::new();
+        lines.push(block_height);
+        lines.push(Line::from(vec![
+            Span::raw("Alias: "),
+            Span::styled(alias_text, Style::new().fg(Color::White)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Active Channels: "),
+            Span::styled(
+                state.num_active_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Pending Channels: "),
+            Span::styled(
+                state.num_pending_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Inactive Channels: "),
+            Span::styled(
+                state.num_inactive_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Peers: "),
+            Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+        ]));
+        if let Some(count) = state.num_watchtowers {
+            lines.push(Line::from(vec![
+                Span::raw("Connected Towers: "),
+                Span::styled(count.to_string(), Style::new().fg(Color::White)),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::raw("Pending HTLCs: "),
+            Span::styled(
+                state.num_pending_htlcs.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        if let Some(is_online) = state.watchtower_server_online {
+            let status = if is_online { "Online" } else { "Offline" };
+            lines.push(Line::from(vec![
+                Span::raw("Tower Server: "),
+                Span::styled(status, Style::new().fg(Color::White)),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::raw("Synced to Bitcoin: "),
+            Span::styled(
+                if state.synced_to_chain { "True" } else { "False" },
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Synced to Lightning: "),
+            Span::styled(
+                if state.synced_to_graph { "True" } else { "False" },
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::raw(""));
 
         if config.streamer_mode {
             let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
@@ -206,8 +250,16 @@ impl LndNode {
         }
     }
 
+    fn build_url(&self, path: &str) -> String {
+        format!(
+            "{}/{}",
+            self.address.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
     async fn get_channels(&self) -> Result<ChannelsResponse> {
-        let url = format!("{}/v1/channels", self.address);
+        let url = self.build_url("/v1/channels");
         let resp = self
             .client
             .get(&url)
@@ -229,8 +281,77 @@ impl LndNode {
         Ok(channels)
     }
 
+    async fn get_watchtower_count(&self) -> Result<(Option<u32>, Option<String>)> {
+        let endpoints = [
+            "/v2/watchtower/client/towers",
+            "/v2/watchtower/client",
+            "/v1/watchtower/client/towers",
+            "/v1/watchtower/client",
+        ];
+        let mut saw_not_found = false;
+        let mut last_status: Option<String> = None;
+
+        for endpoint in endpoints {
+            let url = self.build_url(endpoint);
+            let resp = self
+                .client
+                .get(&url)
+                .header("Grpc-Metadata-macaroon", &self.macaroon)
+                .send()
+                .await?;
+
+            let status = resp.status();
+            if status == StatusCode::NOT_FOUND {
+                saw_not_found = true;
+                continue;
+            }
+            if !status.is_success() {
+                last_status = Some(format!("HTTP {}", status.as_u16()));
+                continue;
+            }
+
+            let value = resp.json::<Value>().await?;
+            let count = parse_watchtower_count(&value);
+            if let Some(count) = count {
+                return Ok((Some(count), None));
+            }
+            last_status = Some("unexpected response".to_string());
+        }
+
+        if saw_not_found {
+            return Ok((None, Some("endpoint not exposed".to_string())));
+        }
+
+        Ok((None, last_status))
+    }
+
+    async fn get_watchtower_server_status(&self) -> Result<Option<bool>> {
+        let endpoints = ["/v2/watchtower/server", "/v1/watchtower/server"];
+
+        for endpoint in endpoints {
+            let url = self.build_url(endpoint);
+            let resp = self
+                .client
+                .get(&url)
+                .header("Grpc-Metadata-macaroon", &self.macaroon)
+                .send()
+                .await?;
+
+            let status = resp.status();
+            if status == StatusCode::NOT_FOUND || status == StatusCode::NOT_IMPLEMENTED {
+                continue;
+            }
+            if status.is_success() {
+                return Ok(Some(true));
+            }
+            return Ok(Some(false));
+        }
+
+        Ok(None)
+    }
+
     async fn get_node_info(&self, sender: UnboundedSender<Event>, index: usize) -> Result<()> {
-        let url = format!("{}/v1/getinfo", self.address);
+        let url = self.build_url("/v1/getinfo");
 
         let response_result = self
             .client
@@ -284,6 +405,14 @@ impl LndNode {
                         }
                         Err(_) => (0, 0, 0, 0),
                     };
+                let (num_watchtowers, watchtower_status) = match self.get_watchtower_count().await {
+                    Ok((count, status)) => (count, status),
+                    Err(e) => (None, Some(format!("request {}", e))),
+                };
+                let watchtower_server_online = match self.get_watchtower_server_status().await {
+                    Ok(status) => status,
+                    Err(_) => None,
+                };
 
                 let new_status = if info.synced_to_chain && info.synced_to_graph {
                     NodeStatus::Online
@@ -324,6 +453,9 @@ impl LndNode {
                             synced_to_chain: info.synced_to_chain,
                             synced_to_graph: info.synced_to_graph,
                             num_pending_htlcs,
+                            num_watchtowers,
+                            watchtower_status: watchtower_status.clone(),
+                            watchtower_server_online,
                         });
                         state
                     }),
@@ -380,6 +512,9 @@ impl NodeProvider for LndNode {
                     synced_to_chain: false,
                     synced_to_graph: false,
                     num_pending_htlcs: 0,
+                    num_watchtowers: None,
+                    watchtower_status: None,
+                    watchtower_server_online: None,
                 });
                 state
             }),

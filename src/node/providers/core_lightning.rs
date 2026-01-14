@@ -7,8 +7,9 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
@@ -52,6 +53,36 @@ struct PeerChannelsResponse {
     channels: Vec<Channel>,
 }
 
+fn parse_watchtower_count(value: &Value) -> Option<u32> {
+    value
+        .get("towers")
+        .and_then(|towers| towers.as_array())
+        .map(|towers| towers.len() as u32)
+        .or_else(|| {
+            value
+                .get("watchtowers")
+                .and_then(|towers| towers.as_array())
+                .map(|towers| towers.len() as u32)
+        })
+        .or_else(|| {
+            value
+                .get("towers")
+                .and_then(|towers| towers.as_object())
+                .map(|towers| towers.len() as u32)
+        })
+        .or_else(|| {
+            value
+                .as_object()
+                .map(|towers| towers.len() as u32)
+        })
+        .or_else(|| {
+            value
+                .get("num_towers")
+                .and_then(|count| count.as_u64())
+                .map(|count| count as u32)
+        })
+}
+
 #[derive(Clone)]
 pub struct CoreLightning {
     rest_address: String,
@@ -70,6 +101,8 @@ pub struct CoreLightningWidgetState {
     pub total_capacity: u64,
     pub local_balance: u64,
     pub num_pending_htlcs: u32, // New field for pending HTLCs
+    pub num_watchtowers: Option<u32>,
+    pub watchtower_status: Option<String>,
 }
 
 impl DynamicState for CoreLightningWidgetState {
@@ -99,50 +132,54 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
             true => "****".to_string(),
             false => state.alias.clone(),
         };
-
-        let lines = vec![
-            Line::from(vec![
-                Span::raw("Block Height: "),
-                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::raw("Alias: "),
-                Span::styled(alias_text, Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::raw("Active Channels: "),
-                Span::styled(
-                    state.num_active_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Pending Channels: "),
-                Span::styled(
-                    state.num_pending_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Inactive Channels: "),
-                Span::styled(
-                    state.num_inactive_channels.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("Peers: "),
-                Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::raw("Pending HTLCs: "),
-                Span::styled(
-                    state.num_pending_htlcs.to_string(),
-                    Style::new().fg(Color::White),
-                ),
-            ]),
-            Line::raw(""),
-        ];
+        let mut lines = Vec::new();
+        lines.push(Line::from(vec![
+            Span::raw("Block Height: "),
+            Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Alias: "),
+            Span::styled(alias_text, Style::new().fg(Color::White)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Active Channels: "),
+            Span::styled(
+                state.num_active_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Pending Channels: "),
+            Span::styled(
+                state.num_pending_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Inactive Channels: "),
+            Span::styled(
+                state.num_inactive_channels.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("Peers: "),
+            Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
+        ]));
+        if let Some(count) = state.num_watchtowers {
+            lines.push(Line::from(vec![
+                Span::raw("Connected Towers: "),
+                Span::styled(count.to_string(), Style::new().fg(Color::White)),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::raw("Pending HTLCs: "),
+            Span::styled(
+                state.num_pending_htlcs.to_string(),
+                Style::new().fg(Color::White),
+            ),
+        ]));
+        lines.push(Line::raw(""));
 
         if config.streamer_mode {
             let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
@@ -173,6 +210,8 @@ struct NodeInfo {
     total_capacity: u64,
     local_balance: u64,
     num_pending_htlcs: u32,
+    num_watchtowers: Option<u32>,
+    watchtower_status: Option<String>,
 }
 
 impl CoreLightning {
@@ -232,6 +271,35 @@ impl CoreLightning {
         Ok(response.json::<PeerChannelsResponse>().await?)
     }
 
+    async fn fetch_watchtowers(&self) -> Result<(Option<u32>, Option<String>)> {
+        let url = format!("{}/v1/listtowers", self.rest_address);
+        let response = self
+            .client
+            .post(&url)
+            .header("Rune", &self.rune)
+            .header("Content-Type", "application/json")
+            .body("{}")
+            .send()
+            .await?;
+
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok((None, Some("endpoint not exposed".to_string())));
+        }
+        if !status.is_success() {
+            return Ok((None, Some(format!("HTTP {}", status.as_u16()))));
+        }
+
+        let value = response.json::<Value>().await?;
+        let count = parse_watchtower_count(&value);
+        let status = if count.is_some() {
+            None
+        } else {
+            Some("unexpected response".to_string())
+        };
+        Ok((count, status))
+    }
+
     async fn get_node_info(&self) -> Result<NodeInfo> {
         let info = match self.fetch_node_info().await {
             Ok(info) => info,
@@ -248,6 +316,8 @@ impl CoreLightning {
                     total_capacity: 0,
                     local_balance: 0,
                     num_pending_htlcs: 0,
+                    num_watchtowers: None,
+                    watchtower_status: None,
                 });
             }
         };
@@ -278,6 +348,10 @@ impl CoreLightning {
                 }
                 Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
             };
+        let (num_watchtowers, watchtower_status) = match self.fetch_watchtowers().await {
+            Ok((count, status)) => (count, status),
+            Err(e) => (None, Some(format!("request {}", e))),
+        };
 
         Ok(NodeInfo {
             status: NodeStatus::Online,
@@ -291,6 +365,8 @@ impl CoreLightning {
             total_capacity,
             local_balance,
             num_pending_htlcs,
+            num_watchtowers,
+            watchtower_status,
         })
     }
 
@@ -328,6 +404,8 @@ impl CoreLightning {
                     total_capacity: node_info.total_capacity,
                     local_balance: node_info.local_balance,
                     num_pending_htlcs: node_info.num_pending_htlcs,
+                    num_watchtowers: node_info.num_watchtowers,
+                    watchtower_status: node_info.watchtower_status.clone(),
                 });
 
                 state
