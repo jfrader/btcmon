@@ -46,6 +46,8 @@ pub struct FeesSettings {
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
 pub struct NodeConfig {
+    #[serde(default)]
+    pub name: Option<String>,
     pub provider: String,
     pub bitcoin_core: Option<BitcoinCoreSettings>,
     pub core_lightning: Option<CoreLightningSettings>,

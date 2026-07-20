@@ -5,12 +5,6 @@ use super::{FeeResult, FeeServiceProvider};
 pub struct FeesBlockchainInfo;
 
 #[derive(Debug, Deserialize)]
-struct BlockchainInfoResponseLimits {
-    // min: u32,
-    // max: u32,
-}
-
-#[derive(Debug, Deserialize)]
 struct BlockchainInfoResponse {
     // limits: BlockchainInfoResponseLimits,
     regular: u32,

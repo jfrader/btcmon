@@ -68,8 +68,8 @@ pub struct NodeState {
     pub service_display_index: usize,
     pub last_service_switch: Option<Instant>,
     pub widget_state: Box<dyn DynamicState>,
-    pub current_node_index: usize,   
-    pub total_nodes: usize,          
+    pub current_node_index: usize,
+    pub total_nodes: usize,
     pub seconds_until_rotation: u64,
 }
 
@@ -103,7 +103,8 @@ impl NodeState {
     pub fn tick(&mut self) {
         let now = Instant::now();
         let switch_interval = Duration::from_secs(3);
-        let keys: Vec<_> = self.services.keys().cloned().collect();
+        let mut keys: Vec<_> = self.services.keys().cloned().collect();
+        keys.sort();
 
         if !keys.is_empty() {
             let should_advance = match self.last_service_switch {
