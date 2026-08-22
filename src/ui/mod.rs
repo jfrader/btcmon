@@ -535,6 +535,20 @@ fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
 }
 
 fn get_price_variation_text(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
+    if let Some(error) = state.price.last_error.as_deref() {
+        let prefix = if state.price.last_price_in_currency.is_some() {
+            "STALE"
+        } else {
+            "ERR"
+        };
+        let color = if state.price.last_price_in_currency.is_some() {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
+        return (format!("{prefix} · {error}"), Style::default().fg(color));
+    }
+
     let style = get_price_style(config, state);
     match get_price_variation(config, state) {
         Some((change_pct, label)) => (format!("{:+.2}% / {}", change_pct, label), style),
@@ -585,9 +599,13 @@ fn price_variation_window(config: &AppConfig) -> (std::time::Duration, String) {
 }
 
 fn get_price_block_style(state: &crate::app::AppState) -> Style {
-    match state.price.last_price_in_currency {
-        Some(_) => Style::default().fg(Color::Green),
-        None => Style::default().fg(Color::Red),
+    match (
+        state.price.last_price_in_currency,
+        state.price.last_error.as_deref(),
+    ) {
+        (Some(_), None) => Style::default().fg(Color::Green),
+        (Some(_), Some(_)) => Style::default().fg(Color::Yellow),
+        (None, _) => Style::default().fg(Color::Red),
     }
 }
 

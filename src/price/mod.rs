@@ -46,10 +46,11 @@ pub trait PriceProvider {
     ) -> Result<PriceResult, Box<dyn std::error::Error>>;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PriceState {
     pub currency: PriceCurrency,
     pub last_price_in_currency: Option<f64>,
+    pub last_error: Option<String>,
 }
 
 impl Default for PriceState {
@@ -57,6 +58,7 @@ impl Default for PriceState {
         Self {
             currency: PriceCurrency::USD,
             last_price_in_currency: None,
+            last_error: None,
         }
     }
 }
@@ -87,10 +89,7 @@ impl<TProvider: PriceProvider> Default for Price<TProvider> {
     }
 }
 
-pub fn spawn_price_checker<T: PriceProvider>(thread: AppThread, currency: PriceCurrency)
-where
-    T: Send,
-{
+pub fn spawn_price_checker<T: PriceProvider + Send>(thread: AppThread, currency: PriceCurrency) {
     thread.tracker.spawn(async move {
         tokio::select! {
             () = thread.token.cancelled() => {}
@@ -114,17 +113,26 @@ async fn price_checker<T: PriceProvider>(
         tokio::select! {
             () = token.cancelled() => {}
             res = provider.fetch_current_price(&currency) => {
-                let _ = match res {
-                    Ok(res) => sender.send(Event::PriceUpdate(PriceState {
-                        currency,
-                        last_price_in_currency: Some(res.price_in_currency.parse::<f64>().unwrap()),
-                    })),
-                    Err(_) => sender.send(Event::PriceUpdate(PriceState {
+                let update = match res {
+                    Ok(res) => match res.price_in_currency.parse::<f64>() {
+                        Ok(price) => PriceState {
+                            currency,
+                            last_price_in_currency: Some(price),
+                            last_error: None,
+                        },
+                        Err(error) => PriceState {
+                            currency,
+                            last_price_in_currency: None,
+                            last_error: Some(format!("bad price: {error}")),
+                        },
+                    },
+                    Err(error) => PriceState {
                         currency,
                         last_price_in_currency: None,
-                    })),
+                        last_error: Some(short_error(&*error)),
+                    },
                 };
-
+                let _ = sender.send(Event::PriceUpdate(update));
             }
         }
 
@@ -132,5 +140,26 @@ async fn price_checker<T: PriceProvider>(
             () = token.cancelled() => {}
             () = tokio::time::sleep(interval) => {}
         }
+    }
+}
+
+fn short_error(error: &dyn std::error::Error) -> String {
+    let text = error.to_string();
+    let line = text.lines().next().unwrap_or("price request failed");
+    if line.chars().count() <= 48 {
+        line.to_string()
+    } else {
+        format!("{}~", line.chars().take(47).collect::<String>())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_error;
+
+    #[test]
+    fn short_error_keeps_the_first_line() {
+        let error = anyhow::anyhow!("connection reset\nmore detail");
+        assert_eq!(short_error(error.as_ref()), "connection reset");
     }
 }
