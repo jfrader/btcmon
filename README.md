@@ -27,7 +27,9 @@ See the [Example config.toml](share/config/example.toml) file
 
 ## Touch controls
 
-On displays with mouse reporting enabled, the bottom dock provides large touch targets:
+On a Linux framebuffer console, btcmon reads the digitizer (`ADS7846` / tft35a)
+directly. Xterm mouse reporting still works under VNC. The bottom dock provides
+large touch targets:
 
 - `<` / `>` selects and pins the previous or next node so it stays on screen.
 - Tapping the node name toggles rotation between `AUTO` and `PINNED` (and resumes automatic rotation after a manual selection).

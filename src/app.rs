@@ -503,6 +503,7 @@ mod tests {
             bitcoin_core: BitcoinCoreSettings::default(),
             core_lightning: CoreLightningSettings::default(),
             lnd: LndSettings::default(),
+            touch: crate::config::TouchSettings::default(),
             nodes: (0..node_count)
                 .map(|index| NodeConfig {
                     name: Some(format!("Node {}", index + 1)),
