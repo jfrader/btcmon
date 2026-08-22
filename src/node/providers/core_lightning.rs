@@ -124,58 +124,56 @@ impl DynamicNodeStatefulWidget for CoreLightningWidget {
             .downcast_mut::<CoreLightningWidgetState>()
             .unwrap_or(&mut default);
 
-        let alias_text = match config.streamer_mode {
-            true => "****".to_string(),
-            false => state.alias.clone(),
+        let alias_text = if config.streamer_mode {
+            "****".to_string()
+        } else {
+            state.alias.clone()
         };
-        let mut lines = Vec::new();
-        lines.push(Line::from(vec![
-            Span::raw("Block Height: "),
-            Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Alias: "),
-            Span::styled(alias_text, Style::new().fg(Color::White)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Active Channels: "),
-            Span::styled(
-                state.num_active_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Pending Channels: "),
-            Span::styled(
-                state.num_pending_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Inactive Channels: "),
-            Span::styled(
-                state.num_inactive_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Peers: "),
-            Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
-        ]));
+        let mut lines = vec![
+            Line::from(vec![
+                Span::raw("Height: "),
+                Span::styled(
+                    crate::format::commas(node_state.height),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Alias: "),
+                Span::styled(alias_text, Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Channels: "),
+                Span::styled(
+                    format!(
+                        "{} up · {} pend · {} down",
+                        crate::format::commas(state.num_active_channels as u64),
+                        crate::format::commas(state.num_pending_channels as u64),
+                        crate::format::commas(state.num_inactive_channels as u64)
+                    ),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(
+                    format!(
+                        "{} · {} htlc",
+                        crate::format::commas(state.num_peers as u64),
+                        crate::format::commas(state.num_pending_htlcs as u64)
+                    ),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+        ];
         if let Some(count) = state.num_watchtowers {
             lines.push(Line::from(vec![
-                Span::raw("Connected Towers: "),
-                Span::styled(count.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Towers: "),
+                Span::styled(
+                    crate::format::commas(count as u64),
+                    Style::new().fg(Color::White),
+                ),
             ]));
         }
-        lines.push(Line::from(vec![
-            Span::raw("Pending HTLCs: "),
-            Span::styled(
-                state.num_pending_htlcs.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::raw(""));
 
         if config.streamer_mode {
             let widget = BlockedParagraph::new(&state.title, node_state.status, lines);

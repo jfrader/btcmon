@@ -321,6 +321,9 @@ impl App {
         if state.last_price_in_currency.is_none() {
             state.last_price_in_currency = self.state.price.last_price_in_currency;
         }
+        if state.last_ok_at.is_none() {
+            state.last_ok_at = self.state.price.last_ok_at;
+        }
         let record_history = state.last_error.is_none();
         self.state.price = state;
         if !record_history {
@@ -623,11 +626,13 @@ mod tests {
             currency: PriceCurrency::USD,
             last_price_in_currency: Some(100_000.0),
             last_error: None,
+            last_ok_at: None,
         });
         app.handle_price_update(PriceState {
             currency: PriceCurrency::USD,
             last_price_in_currency: None,
             last_error: Some("connection reset".to_string()),
+            last_ok_at: None,
         });
 
         assert_eq!(app.state.price.last_price_in_currency, Some(100_000.0));

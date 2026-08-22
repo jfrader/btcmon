@@ -138,95 +138,86 @@ impl DynamicNodeStatefulWidget for LndWidget {
             .downcast_mut::<LndWidgetState>()
             .unwrap_or(&mut default);
 
-        let block_height = match node_state.status {
-            NodeStatus::Synchronizing => Line::from(vec![
-                Span::raw("Block Height: "),
-                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
-            ]),
-            _ => Line::from(vec![
-                Span::raw("Block Height: "),
-                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
-            ]),
+        let alias_text = if config.streamer_mode {
+            "****".to_string()
+        } else {
+            state.alias.clone()
         };
-
-        let alias_text = match config.streamer_mode {
-            true => "****".to_string(),
-            false => state.alias.clone(),
-        };
-        let mut lines = Vec::new();
-        lines.push(block_height);
-        lines.push(Line::from(vec![
-            Span::raw("Alias: "),
-            Span::styled(alias_text, Style::new().fg(Color::White)),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Active Channels: "),
-            Span::styled(
-                state.num_active_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Pending Channels: "),
-            Span::styled(
-                state.num_pending_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Inactive Channels: "),
-            Span::styled(
-                state.num_inactive_channels.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("Peers: "),
-            Span::styled(state.num_peers.to_string(), Style::new().fg(Color::White)),
-        ]));
+        let mut towers = String::new();
         if let Some(count) = state.num_watchtowers {
-            lines.push(Line::from(vec![
-                Span::raw("Connected Towers: "),
-                Span::styled(count.to_string(), Style::new().fg(Color::White)),
-            ]));
+            towers.push_str(&format!("{} client", count));
         }
-        lines.push(Line::from(vec![
-            Span::raw("Pending HTLCs: "),
-            Span::styled(
-                state.num_pending_htlcs.to_string(),
-                Style::new().fg(Color::White),
-            ),
-        ]));
         if let Some(is_online) = state.watchtower_server_online {
-            let status = if is_online { "Online" } else { "Offline" };
+            if !towers.is_empty() {
+                towers.push_str(" · ");
+            }
+            towers.push_str(if is_online {
+                "server up"
+            } else {
+                "server down"
+            });
+        }
+        let mut lines = vec![
+            Line::from(vec![
+                Span::raw("Height: "),
+                Span::styled(
+                    crate::format::commas(node_state.height),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Alias: "),
+                Span::styled(alias_text, Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Channels: "),
+                Span::styled(
+                    format!(
+                        "{} up · {} pend · {} down",
+                        crate::format::commas(state.num_active_channels),
+                        crate::format::commas(state.num_pending_channels),
+                        crate::format::commas(state.num_inactive_channels)
+                    ),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Peers: "),
+                Span::styled(
+                    format!(
+                        "{} · {} htlc",
+                        crate::format::commas(state.num_peers as u64),
+                        crate::format::commas(state.num_pending_htlcs)
+                    ),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+        ];
+        if !towers.is_empty() {
             lines.push(Line::from(vec![
-                Span::raw("Tower Server: "),
-                Span::styled(status, Style::new().fg(Color::White)),
+                Span::raw("Towers: "),
+                Span::styled(towers, Style::new().fg(Color::White)),
             ]));
         }
         lines.push(Line::from(vec![
-            Span::raw("Synced to Bitcoin: "),
+            Span::raw("Sync: "),
             Span::styled(
-                if state.synced_to_chain {
-                    "True"
-                } else {
-                    "False"
-                },
+                format!(
+                    "chain {} · graph {}",
+                    if state.synced_to_chain {
+                        "up"
+                    } else {
+                        "behind"
+                    },
+                    if state.synced_to_graph {
+                        "up"
+                    } else {
+                        "behind"
+                    }
+                ),
                 Style::new().fg(Color::White),
             ),
         ]));
-        lines.push(Line::from(vec![
-            Span::raw("Synced to Lightning: "),
-            Span::styled(
-                if state.synced_to_graph {
-                    "True"
-                } else {
-                    "False"
-                },
-                Style::new().fg(Color::White),
-            ),
-        ]));
-        lines.push(Line::raw(""));
 
         if config.streamer_mode {
             let widget = BlockedParagraph::new(&state.title, node_state.status, lines);

@@ -189,15 +189,16 @@ fn render_node_summary(app: &App, frame: &mut Frame, area: Rect) {
                 if state.height == 0 {
                     "--".to_string()
                 } else {
-                    state.height.to_string()
+                    crate::format::commas(state.height)
                 },
                 Style::default()
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
-        Line::from(service_spans),
     ];
+    lines.extend(node_glance_lines(state, app.config.streamer_mode));
+    lines.push(Line::from(service_spans));
     if !state.message.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("INFO      ", Style::default().fg(Color::DarkGray)),
@@ -214,17 +215,37 @@ fn render_node_status(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_price_view(config: &AppConfig, app: &mut App, frame: &mut Frame, area: Rect) {
+    let spark_height = if area.height >= 12 { 2 } else { 0 };
+    let footer_height = if area.height >= 10 { 2 } else { 1 };
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(spark_height),
+            Constraint::Length(footer_height),
+        ])
         .split(area);
     render_price_widget(app, frame, layout[0], "Bitcoin Price", PixelSize::Full);
 
-    let (status_text, status_style) = get_price_variation_text(config, &app.state);
+    if spark_height > 0 {
+        let values: Vec<f64> = app
+            .state
+            .price_history
+            .iter()
+            .map(|(_, price)| *price)
+            .collect();
+        let spark = crate::format::sparkline(&values, layout[1].width as usize);
+        Paragraph::new(spark)
+            .style(Style::default().fg(BITCOIN_ORANGE))
+            .alignment(Alignment::Center)
+            .render(layout[1], frame.buffer_mut());
+    }
+
+    let (status_text, status_style) = get_price_ticker_footer(config, &app.state);
     Paragraph::new(status_text)
         .style(status_style)
         .alignment(Alignment::Center)
-        .render(layout[1], frame.buffer_mut());
+        .render(layout[2], frame.buffer_mut());
 }
 
 fn render_price_widget(
@@ -532,6 +553,126 @@ fn get_price_style(config: &AppConfig, state: &crate::app::AppState) -> Style {
     } else {
         Style::default().fg(Color::White)
     }
+}
+
+fn node_glance_lines(state: &crate::node::NodeState, streamer_mode: bool) -> Vec<Line<'_>> {
+    use crate::node::providers::bitcoin_core::BitcoinCoreWidgetState;
+    use crate::node::providers::core_lightning::CoreLightningWidgetState;
+    use crate::node::providers::lnd::LndWidgetState;
+
+    if let Some(core) = state
+        .widget_state
+        .as_any()
+        .downcast_ref::<BitcoinCoreWidgetState>()
+    {
+        let mut lines = vec![Line::from(vec![
+            Span::styled("NETWORK   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(
+                    "{} · {} peers",
+                    crate::format::chain_label(&core.chain),
+                    crate::format::commas(core.peers)
+                ),
+                Style::default().fg(Color::White),
+            ),
+        ])];
+        if core.mempool_tx > 0 {
+            lines.push(Line::from(vec![
+                Span::styled("MEMPOOL   ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{} tx", crate::format::commas(core.mempool_tx)),
+                    Style::default().fg(Color::White),
+                ),
+            ]));
+        }
+        return lines;
+    }
+
+    let channels = state
+        .widget_state
+        .as_any()
+        .downcast_ref::<LndWidgetState>()
+        .map(|ln| {
+            (
+                ln.num_active_channels,
+                ln.num_pending_channels,
+                ln.num_inactive_channels,
+                ln.local_balance,
+                ln.capacity,
+            )
+        })
+        .or_else(|| {
+            state
+                .widget_state
+                .as_any()
+                .downcast_ref::<CoreLightningWidgetState>()
+                .map(|ln| {
+                    (
+                        ln.num_active_channels as u64,
+                        ln.num_pending_channels as u64,
+                        ln.num_inactive_channels as u64,
+                        ln.local_balance,
+                        ln.total_capacity,
+                    )
+                })
+        });
+
+    let Some((active, pending, inactive, local, capacity)) = channels else {
+        return Vec::new();
+    };
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled("CHANNELS  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!(
+                "{} up · {} pend · {} down",
+                crate::format::commas(active),
+                crate::format::commas(pending),
+                crate::format::commas(inactive)
+            ),
+            Style::default().fg(Color::White),
+        ),
+    ])];
+    if !streamer_mode && capacity > 0 {
+        lines.push(Line::from(vec![
+            Span::styled("BALANCE   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(
+                    "{} / {} sats",
+                    crate::format::commas(local),
+                    crate::format::commas(capacity)
+                ),
+                Style::default().fg(Color::White),
+            ),
+        ]));
+    }
+    lines
+}
+
+fn get_price_ticker_footer(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
+    let (change, style) = get_price_variation_text(config, state);
+    if state.price.last_error.is_some() {
+        return (change, style);
+    }
+
+    let values: Vec<f64> = state
+        .price_history
+        .iter()
+        .map(|(_, price)| *price)
+        .collect();
+    if values.is_empty() {
+        return (change, style);
+    }
+    let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
+    (
+        format!(
+            "{change}  ·  H {}  L {}",
+            crate::format::commas(high.trunc() as u64),
+            crate::format::commas(low.trunc() as u64)
+        ),
+        style,
+    )
 }
 
 fn get_price_variation_text(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
