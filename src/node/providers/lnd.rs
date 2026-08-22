@@ -12,12 +12,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::{self, Duration, Instant};
 
+use crate::app::AppThread;
 use crate::config::{AppConfig, LndSettings};
 use crate::event::Event;
 use crate::node::widgets::{BlockedParagraph, BlockedParagraphWithGauge};
 use crate::node::{NodeProvider, NodeState, NodeStatus};
 use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
-use crate::{app::AppThread};
 
 #[derive(Debug, Deserialize)]
 struct GetInfoResponse {
@@ -207,14 +207,22 @@ impl DynamicNodeStatefulWidget for LndWidget {
         lines.push(Line::from(vec![
             Span::raw("Synced to Bitcoin: "),
             Span::styled(
-                if state.synced_to_chain { "True" } else { "False" },
+                if state.synced_to_chain {
+                    "True"
+                } else {
+                    "False"
+                },
                 Style::new().fg(Color::White),
             ),
         ]));
         lines.push(Line::from(vec![
             Span::raw("Synced to Lightning: "),
             Span::styled(
-                if state.synced_to_graph { "True" } else { "False" },
+                if state.synced_to_graph {
+                    "True"
+                } else {
+                    "False"
+                },
                 Style::new().fg(Color::White),
             ),
         ]));

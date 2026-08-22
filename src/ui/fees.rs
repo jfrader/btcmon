@@ -24,8 +24,13 @@ impl StatefulWidget for FeesWidget {
         .filter_map(|(label, value)| value.map(|value| (label, value)))
         .collect();
 
+        let title = if state.fees.last_error.is_some() && !entries.is_empty() {
+            "Fees · sat/vB · STALE"
+        } else {
+            "Fees · sat/vB"
+        };
         let block = Block::bordered()
-            .title("Fees · sat/vB")
+            .title(title)
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Plain)
             .border_style(self.style);
@@ -33,8 +38,15 @@ impl StatefulWidget for FeesWidget {
         block.render(area, buf);
 
         if entries.is_empty() {
-            Paragraph::new("Waiting for fee data...")
-                .style(Style::default().fg(Color::DarkGray))
+            let (message, style) = match state.fees.last_error.as_deref() {
+                Some(error) => (format!("ERR · {error}"), Style::default().fg(Color::Red)),
+                None => (
+                    "Waiting for fee data...".to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            };
+            Paragraph::new(message)
+                .style(style)
                 .alignment(Alignment::Center)
                 .render(centered_area(inner, 1), buf);
             return;
