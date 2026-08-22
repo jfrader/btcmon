@@ -22,3 +22,9 @@ variation_threshold = 0.0
 
 [fees]
 enabled = true
+
+[touch]
+enabled = true
+swap_xy = true
+invert_x = true
+invert_y = false
