@@ -55,7 +55,13 @@ impl DynamicState for BitcoinCoreWidgetState {
 pub struct BitcoinCoreWidget;
 
 impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, _config: &AppConfig) {
+    fn render(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        node_state: &mut NodeState,
+        _config: &AppConfig,
+    ) {
         let mut default = BitcoinCoreWidgetState::default();
         let state = node_state
             .widget_state

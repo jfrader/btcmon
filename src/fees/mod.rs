@@ -23,6 +23,7 @@ pub trait FeeServiceProvider {
 #[derive(Debug, Clone)]
 pub struct FeesState {
     pub result: FeeResult,
+    pub last_error: Option<String>,
 }
 
 impl Default for FeesState {
@@ -33,7 +34,14 @@ impl Default for FeesState {
                 medium: None,
                 high: None,
             },
+            last_error: None,
         }
+    }
+}
+
+impl FeeResult {
+    pub fn is_empty(&self) -> bool {
+        self.low.is_none() && self.medium.is_none() && self.high.is_none()
     }
 }
 
@@ -63,10 +71,7 @@ impl<TProvider: FeeServiceProvider> Default for FeeService<TProvider> {
     }
 }
 
-pub fn spawn_fees_checker<T: FeeServiceProvider>(thread: AppThread)
-where
-    T: Send,
-{
+pub fn spawn_fees_checker<T: FeeServiceProvider + Send>(thread: AppThread) {
     thread.tracker.spawn(async move {
         tokio::select! {
             () = thread.token.cancelled() => {}
@@ -89,16 +94,21 @@ async fn fees_checker<T: FeeServiceProvider>(
         tokio::select! {
             () = token.cancelled() => {}
             res = provider.fetch_current_fees() => {
-                let _ = match res {
-                    Ok(res) => sender.send(Event::FeeUpdate(FeesState {
+                let update = match res {
+                    Ok(result) => FeesState {
+                        result,
+                        last_error: None,
+                    },
+                    Err(error) => FeesState {
                         result: FeeResult {
-                            low: res.low,
-                            medium: res.medium,
-                            high: res.high,
-                        }
-                    })),
-                    Err(_) => Ok(()),
+                            low: None,
+                            medium: None,
+                            high: None,
+                        },
+                        last_error: Some(short_error(&*error)),
+                    },
                 };
+                let _ = sender.send(Event::FeeUpdate(update));
 
             }
         }
@@ -107,5 +117,42 @@ async fn fees_checker<T: FeeServiceProvider>(
             () = token.cancelled() => {}
             () = tokio::time::sleep(interval) => {}
         }
+    }
+}
+
+fn short_error(error: &dyn std::error::Error) -> String {
+    let text = error.to_string();
+    let line = text.lines().next().unwrap_or("fee request failed");
+    if line.chars().count() <= 48 {
+        line.to_string()
+    } else {
+        format!("{}~", line.chars().take(47).collect::<String>())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{short_error, FeeResult};
+
+    #[test]
+    fn empty_fee_result_is_detected() {
+        assert!(FeeResult {
+            low: None,
+            medium: None,
+            high: None,
+        }
+        .is_empty());
+        assert!(!FeeResult {
+            low: None,
+            medium: Some("12".to_string()),
+            high: None,
+        }
+        .is_empty());
+    }
+
+    #[test]
+    fn short_error_keeps_the_first_line() {
+        let error = anyhow::anyhow!("timed out\ntrace");
+        assert_eq!(short_error(error.as_ref()), "timed out");
     }
 }

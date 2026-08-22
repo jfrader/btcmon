@@ -70,11 +70,7 @@ fn parse_watchtower_count(value: &Value) -> Option<u32> {
                 .and_then(|towers| towers.as_object())
                 .map(|towers| towers.len() as u32)
         })
-        .or_else(|| {
-            value
-                .as_object()
-                .map(|towers| towers.len() as u32)
-        })
+        .or_else(|| value.as_object().map(|towers| towers.len() as u32))
         .or_else(|| {
             value
                 .get("num_towers")

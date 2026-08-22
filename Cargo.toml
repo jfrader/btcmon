@@ -2,7 +2,7 @@
 name = "btcmon"
 version = "0.1.0"
 authors = ["fran <jfrader@pm.me>"]
-license = "MIT"
+license = "GPL-3.0"
 edition = "2021"
 
 [dependencies]
