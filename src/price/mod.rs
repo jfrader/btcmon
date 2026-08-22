@@ -51,6 +51,7 @@ pub struct PriceState {
     pub currency: PriceCurrency,
     pub last_price_in_currency: Option<f64>,
     pub last_error: Option<String>,
+    pub last_ok_at: Option<tokio::time::Instant>,
 }
 
 impl Default for PriceState {
@@ -59,6 +60,7 @@ impl Default for PriceState {
             currency: PriceCurrency::USD,
             last_price_in_currency: None,
             last_error: None,
+            last_ok_at: None,
         }
     }
 }
@@ -119,17 +121,20 @@ async fn price_checker<T: PriceProvider>(
                             currency,
                             last_price_in_currency: Some(price),
                             last_error: None,
+                            last_ok_at: Some(tokio::time::Instant::now()),
                         },
                         Err(error) => PriceState {
                             currency,
                             last_price_in_currency: None,
                             last_error: Some(format!("bad price: {error}")),
+                            last_ok_at: None,
                         },
                     },
                     Err(error) => PriceState {
                         currency,
                         last_price_in_currency: None,
                         last_error: Some(short_error(&*error)),
+                        last_ok_at: None,
                     },
                 };
                 let _ = sender.send(Event::PriceUpdate(update));

@@ -44,7 +44,7 @@ impl StatefulWidget for PriceWidget {
         let price_with_currency_lines: Vec<ratatui::text::Line<'static>> =
             match state.price.last_price_in_currency {
                 Some(v) => vec![
-                    v.trunc().to_string().into(),
+                    crate::format::commas(v.trunc() as u64).into(),
                     state.price.currency.to_string().into(),
                 ],
                 None => vec!["...".into()],
