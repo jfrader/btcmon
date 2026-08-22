@@ -122,7 +122,7 @@ async fn main() -> AppResult<()> {
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new(
-        config.tick_rate.parse::<u64>().unwrap(),
+        config.tick_rate.parse::<u64>().unwrap_or(250),
         app.thread.sender.clone(),
         receiver,
     );

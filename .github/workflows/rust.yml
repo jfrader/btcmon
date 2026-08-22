@@ -2,21 +2,39 @@ name: Rust Build + Test
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [master, dev]
   pull_request:
-    branches: [ "master" ]
+    branches: [master, dev]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v5
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v5
+      - name: Install libzmq
+        run: sudo apt-get update && sudo apt-get install -y libzmq3-dev pkg-config
+      - name: Build
+        run: cargo build --verbose
+      - name: Test
+        run: cargo test --verbose
+
+  native:
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, ARM64]
+    needs: test
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build release
+        run: |
+          if [ -f "$HOME/.cargo/env" ]; then
+            . "$HOME/.cargo/env"
+          fi
+          cargo build --release --locked
+      - name: Local hook
+        run: ./scripts/ci-hook.sh

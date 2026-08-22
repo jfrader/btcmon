@@ -1,7 +1,7 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    widgets::{ Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 use std::any::Any;
 use std::fmt::Debug;

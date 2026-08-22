@@ -265,10 +265,9 @@ impl App {
     }
 
     pub fn init_price(&mut self) {
-        spawn_price_checker::<PriceCoinbase>(
-            self.thread.clone(),
-            PriceCurrency::from_str(&self.config.price.currency).unwrap(),
-        );
+        let currency =
+            PriceCurrency::from_str(&self.config.price.currency).unwrap_or(PriceCurrency::USD);
+        spawn_price_checker::<PriceCoinbase>(self.thread.clone(), currency);
     }
 
     pub fn init_fees(&mut self) {
@@ -318,8 +317,15 @@ impl App {
         }
     }
 
-    pub fn handle_price_update(&mut self, state: PriceState) {
+    pub fn handle_price_update(&mut self, mut state: PriceState) {
+        if state.last_price_in_currency.is_none() {
+            state.last_price_in_currency = self.state.price.last_price_in_currency;
+        }
+        let record_history = state.last_error.is_none();
         self.state.price = state;
+        if !record_history {
+            return;
+        }
         let now = Instant::now();
         if let Some(price) = self.state.price.last_price_in_currency {
             self.state.price_history.push_back((now, price));
@@ -343,7 +349,10 @@ impl App {
         self.state.node_states[index] = updated;
     }
 
-    pub fn handle_fee_update(&mut self, state: FeesState) {
+    pub fn handle_fee_update(&mut self, mut state: FeesState) {
+        if state.result.is_empty() {
+            state.result = self.state.fees.result.clone();
+        }
         self.state.fees = state;
     }
 
@@ -605,6 +614,52 @@ mod tests {
         );
 
         assert_eq!(app.node_switch_interval, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn failed_price_update_keeps_the_last_good_value() {
+        let mut app = test_app(0, true, false);
+        app.handle_price_update(PriceState {
+            currency: PriceCurrency::USD,
+            last_price_in_currency: Some(100_000.0),
+            last_error: None,
+        });
+        app.handle_price_update(PriceState {
+            currency: PriceCurrency::USD,
+            last_price_in_currency: None,
+            last_error: Some("connection reset".to_string()),
+        });
+
+        assert_eq!(app.state.price.last_price_in_currency, Some(100_000.0));
+        assert_eq!(
+            app.state.price.last_error.as_deref(),
+            Some("connection reset")
+        );
+        assert_eq!(app.state.price_history.len(), 1);
+    }
+
+    #[test]
+    fn failed_fee_update_keeps_the_last_good_value() {
+        let mut app = test_app(0, true, true);
+        app.handle_fee_update(FeesState {
+            result: crate::fees::FeeResult {
+                low: None,
+                medium: Some("12".to_string()),
+                high: Some("20".to_string()),
+            },
+            last_error: None,
+        });
+        app.handle_fee_update(FeesState {
+            result: crate::fees::FeeResult {
+                low: None,
+                medium: None,
+                high: None,
+            },
+            last_error: Some("timed out".to_string()),
+        });
+
+        assert_eq!(app.state.fees.result.medium.as_deref(), Some("12"));
+        assert_eq!(app.state.fees.last_error.as_deref(), Some("timed out"));
     }
 
     #[test]
