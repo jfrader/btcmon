@@ -9,6 +9,7 @@ use btcmon::node::providers::core_lightning::{
 };
 use btcmon::node::providers::lnd::{LndNode, LndWidget, LndWidgetState};
 use btcmon::node::NodeProvider;
+use btcmon::touch::spawn_touch_listener;
 use btcmon::tui::Tui;
 use btcmon::widget::{DynamicNodeStatefulWidget, DynamicState};
 use ratatui::backend::CrosstermBackend;
@@ -129,6 +130,7 @@ async fn main() -> AppResult<()> {
 
     let mut tui = Tui::new(terminal, events);
     tui.init()?;
+    spawn_touch_listener(app.thread.clone(), config.touch.clone());
     tui.draw(&config, &mut app)?;
 
     // Initialize all nodes
