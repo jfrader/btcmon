@@ -23,6 +23,16 @@ pub mod node;
 pub mod price;
 
 const TOUCH_DOCK_HEIGHT: u16 = 3;
+
+fn touch_dock_height(frame_height: u16) -> u16 {
+    if frame_height <= 16 {
+        5
+    } else if frame_height <= 20 {
+        4
+    } else {
+        TOUCH_DOCK_HEIGHT
+    }
+}
 const BITCOIN_ORANGE: Color = Color::Rgb(247, 147, 26);
 
 pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
@@ -33,12 +43,13 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         app.active_view = available_views[0];
     }
 
-    let show_touch_dock =
-        frame.area().height >= 11 && (app.nodes.len() > 1 || available_views.len() > 1);
+    let dock_height = touch_dock_height(frame.area().height);
+    let show_touch_dock = frame.area().height >= dock_height.saturating_add(6)
+        && (app.nodes.len() > 1 || available_views.len() > 1);
     let (content_area, dock_area) = if show_touch_dock {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(TOUCH_DOCK_HEIGHT)])
+            .constraints([Constraint::Min(0), Constraint::Length(dock_height)])
             .split(frame.area());
         (layout[0], Some(layout[1]))
     } else {
@@ -53,6 +64,7 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
     }
 
     render_new_block_popup(app, frame);
+    register_content_node_swipes(app, content_area);
 
     if let Some(area) = dock_area {
         render_touch_dock(app, frame, area, &available_views);
@@ -290,6 +302,26 @@ fn render_new_block_popup(app: &App, frame: &mut Frame) {
             node_state.draw_new_block_popup(frame, node_state.height);
         }
     }
+}
+
+fn register_content_node_swipes(app: &mut App, area: Rect) {
+    if app.nodes.len() <= 1 || area.width < 2 || area.height == 0 {
+        return;
+    }
+    let left_width = area.width / 2;
+    app.touch_targets.push(TouchTarget {
+        area: Rect::new(area.x, area.y, left_width, area.height),
+        action: TouchAction::PreviousNode,
+    });
+    app.touch_targets.push(TouchTarget {
+        area: Rect::new(
+            area.x.saturating_add(left_width),
+            area.y,
+            area.width.saturating_sub(left_width),
+            area.height,
+        ),
+        action: TouchAction::NextNode,
+    });
 }
 
 fn render_touch_dock(
@@ -909,7 +941,18 @@ mod tests {
     fn node_only_dock_uses_three_live_controls() {
         let app = draw_at(test_app(3, false, false), 60, 20);
 
-        assert_eq!(app.touch_targets.len(), 3);
+        assert_eq!(
+            app.touch_targets
+                .iter()
+                .filter(|target| matches!(
+                    target.action,
+                    TouchAction::PreviousNode
+                        | TouchAction::NextNode
+                        | TouchAction::ToggleNodeRotation
+                ))
+                .count(),
+            5
+        );
         assert!(!app
             .touch_targets
             .iter()
@@ -917,9 +960,38 @@ mod tests {
     }
 
     #[test]
-    fn touch_dock_is_hidden_when_the_terminal_is_too_short() {
+    fn tapping_the_node_panel_changes_node() {
+        let mut app = draw_at(test_app(3, true, true), 48, 16);
+        let right = app
+            .touch_targets
+            .iter()
+            .rev()
+            .find(|target| target.action == TouchAction::NextNode)
+            .copied()
+            .unwrap();
+
+        app.handle_mouse_events(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: right.area.x + right.area.width / 2,
+            row: right.area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        })
+        .unwrap();
+
+        assert_eq!(app.current_node_index, 1);
+    }
+
+    #[test]
+    fn short_screens_still_switch_nodes_from_the_panel() {
         let app = draw_at(test_app(3, true, true), 40, 10);
 
-        assert!(app.touch_targets.is_empty());
+        assert!(app
+            .touch_targets
+            .iter()
+            .any(|target| target.action == TouchAction::PreviousNode));
+        assert!(app
+            .touch_targets
+            .iter()
+            .any(|target| target.action == TouchAction::NextNode));
     }
 }
