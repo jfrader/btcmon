@@ -25,6 +25,6 @@ enabled = true
 
 [touch]
 enabled = true
-swap_xy = true
-invert_x = true
+swap_xy = false
+invert_x = false
 invert_y = false
