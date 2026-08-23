@@ -58,8 +58,8 @@ impl Default for TouchSettings {
         Self {
             enabled: true,
             device: String::new(),
-            swap_xy: true,
-            invert_x: true,
+            swap_xy: false,
+            invert_x: false,
             invert_y: false,
         }
     }
@@ -133,8 +133,8 @@ impl AppConfig {
             .set_default("fees.enabled", true)?
             .set_default("touch.enabled", true)?
             .set_default("touch.device", "")?
-            .set_default("touch.swap_xy", true)?
-            .set_default("touch.invert_x", true)?
+            .set_default("touch.swap_xy", false)?
+            .set_default("touch.invert_x", false)?
             .set_default("touch.invert_y", false)?;
 
         let mut default_config_file: String = String::from("/etc/btcmon/btcmon.toml");
