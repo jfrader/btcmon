@@ -23,16 +23,6 @@ pub mod node;
 pub mod price;
 
 const TOUCH_DOCK_HEIGHT: u16 = 3;
-
-fn touch_dock_height(frame_height: u16) -> u16 {
-    if frame_height <= 16 {
-        5
-    } else if frame_height <= 20 {
-        4
-    } else {
-        TOUCH_DOCK_HEIGHT
-    }
-}
 const BITCOIN_ORANGE: Color = Color::Rgb(247, 147, 26);
 
 pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
@@ -43,13 +33,12 @@ pub fn render(config: &AppConfig, app: &mut App, frame: &mut Frame) {
         app.active_view = available_views[0];
     }
 
-    let dock_height = touch_dock_height(frame.area().height);
-    let show_touch_dock = frame.area().height >= dock_height.saturating_add(6)
-        && (app.nodes.len() > 1 || available_views.len() > 1);
+    let show_touch_dock =
+        frame.area().height >= 11 && (app.nodes.len() > 1 || available_views.len() > 1);
     let (content_area, dock_area) = if show_touch_dock {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(dock_height)])
+            .constraints([Constraint::Min(0), Constraint::Length(TOUCH_DOCK_HEIGHT)])
             .split(frame.area());
         (layout[0], Some(layout[1]))
     } else {
@@ -311,7 +300,7 @@ fn register_content_node_swipes(app: &mut App, area: Rect) {
     let left_width = area.width / 2;
     app.touch_targets.push(TouchTarget {
         area: Rect::new(area.x, area.y, left_width, area.height),
-        action: TouchAction::PreviousNode,
+        action: TouchAction::BrowsePreviousNode,
     });
     app.touch_targets.push(TouchTarget {
         area: Rect::new(
@@ -320,7 +309,7 @@ fn register_content_node_swipes(app: &mut App, area: Rect) {
             area.width.saturating_sub(left_width),
             area.height,
         ),
-        action: TouchAction::NextNode,
+        action: TouchAction::BrowseNextNode,
     });
 }
 
@@ -944,12 +933,16 @@ mod tests {
         assert_eq!(
             app.touch_targets
                 .iter()
-                .filter(|target| matches!(
-                    target.action,
-                    TouchAction::PreviousNode
-                        | TouchAction::NextNode
-                        | TouchAction::ToggleNodeRotation
-                ))
+                .filter(|target| {
+                    matches!(
+                        target.action,
+                        TouchAction::PreviousNode
+                            | TouchAction::NextNode
+                            | TouchAction::BrowsePreviousNode
+                            | TouchAction::BrowseNextNode
+                            | TouchAction::ToggleNodeRotation
+                    )
+                })
                 .count(),
             5
         );
@@ -960,13 +953,14 @@ mod tests {
     }
 
     #[test]
-    fn tapping_the_node_panel_changes_node() {
+    fn tapping_the_node_panel_changes_node_without_pinning() {
         let mut app = draw_at(test_app(3, true, true), 48, 16);
+        assert!(app.auto_rotate_nodes);
         let right = app
             .touch_targets
             .iter()
             .rev()
-            .find(|target| target.action == TouchAction::NextNode)
+            .find(|target| target.action == TouchAction::BrowseNextNode)
             .copied()
             .unwrap();
 
@@ -979,6 +973,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(app.current_node_index, 1);
+        assert!(app.auto_rotate_nodes);
     }
 
     #[test]
@@ -988,10 +983,10 @@ mod tests {
         assert!(app
             .touch_targets
             .iter()
-            .any(|target| target.action == TouchAction::PreviousNode));
+            .any(|target| target.action == TouchAction::BrowsePreviousNode));
         assert!(app
             .touch_targets
             .iter()
-            .any(|target| target.action == TouchAction::NextNode));
+            .any(|target| target.action == TouchAction::BrowseNextNode));
     }
 }
