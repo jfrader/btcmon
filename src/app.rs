@@ -43,6 +43,8 @@ impl DashboardView {
 pub enum TouchAction {
     PreviousNode,
     NextNode,
+    BrowsePreviousNode,
+    BrowseNextNode,
     ToggleNodeRotation,
     ToggleViewMenu,
     SelectView(DashboardView),
@@ -226,23 +228,38 @@ impl App {
     }
 
     pub fn next_node(&mut self) {
-        if self.nodes.len() > 1 {
-            self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
-            self.auto_rotate_nodes = false;
-            self.reset_node_rotation();
-        }
+        self.advance_node(true, true);
     }
 
     pub fn previous_node(&mut self) {
-        if self.nodes.len() > 1 {
+        self.advance_node(false, true);
+    }
+
+    pub fn browse_next_node(&mut self) {
+        self.advance_node(true, false);
+    }
+
+    pub fn browse_previous_node(&mut self) {
+        self.advance_node(false, false);
+    }
+
+    fn advance_node(&mut self, forwards: bool, pin: bool) {
+        if self.nodes.len() <= 1 {
+            return;
+        }
+        if forwards {
+            self.current_node_index = (self.current_node_index + 1) % self.nodes.len();
+        } else {
             self.current_node_index = if self.current_node_index == 0 {
                 self.nodes.len() - 1
             } else {
                 self.current_node_index - 1
             };
-            self.auto_rotate_nodes = false;
-            self.reset_node_rotation();
         }
+        if pin {
+            self.auto_rotate_nodes = false;
+        }
+        self.reset_node_rotation();
     }
 
     pub fn toggle_node_rotation(&mut self) {
@@ -451,6 +468,8 @@ impl App {
         match action {
             TouchAction::PreviousNode => self.previous_node(),
             TouchAction::NextNode => self.next_node(),
+            TouchAction::BrowsePreviousNode => self.browse_previous_node(),
+            TouchAction::BrowseNextNode => self.browse_next_node(),
             TouchAction::ToggleNodeRotation => self.toggle_node_rotation(),
             TouchAction::ToggleViewMenu => {
                 if self.available_views().len() > 1 {
