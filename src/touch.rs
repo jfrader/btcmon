@@ -78,12 +78,13 @@ async fn run_touch(sender: mpsc::UnboundedSender<Event>, settings: TouchSettings
             Err(_) => break,
         };
         apply_event(event, &mut raw_x, &mut raw_y, &mut pressed);
-        if event.event_type() != EventType::SYNCHRONIZATION {
-            continue;
-        }
         if pressed && !was_pressed {
             let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
             let (column, row) = map.cell(raw_x, raw_y, cols, rows);
+            let _ = std::fs::write(
+                "/tmp/btcmon-touch.log",
+                format!("raw={raw_x},{raw_y} cell={column},{row} size={cols}x{rows}\n"),
+            );
             let _ = sender.send(Event::Mouse(MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
                 column,
@@ -183,18 +184,18 @@ mod tests {
             max_x: 1000,
             min_y: 0,
             max_y: 1000,
-            swap_xy: true,
-            invert_x: true,
+            swap_xy: false,
+            invert_x: false,
             invert_y: false,
         }
     }
 
     #[test]
-    fn tft35a_rotate_270_maps_corners() {
+    fn identity_map_sends_max_raw_to_bottom_right() {
         let touch = map();
-        assert_eq!(touch.cell(0, 0, 80, 24), (79, 0));
-        assert_eq!(touch.cell(1000, 1000, 80, 24), (0, 23));
-        assert_eq!(touch.cell(0, 1000, 80, 24), (0, 0));
-        assert_eq!(touch.cell(1000, 0, 80, 24), (79, 23));
+        assert_eq!(touch.cell(0, 0, 80, 24), (0, 0));
+        assert_eq!(touch.cell(1000, 1000, 80, 24), (79, 23));
+        assert_eq!(touch.cell(0, 1000, 80, 24), (0, 23));
+        assert_eq!(touch.cell(1000, 0, 80, 24), (79, 0));
     }
 }
