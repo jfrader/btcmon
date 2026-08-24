@@ -25,27 +25,120 @@ use crate::widget::{DynamicNodeStatefulWidget, DynamicState};
 struct GetInfoResponse {
     pub alias: String,
     pub blockheight: u64,
+    #[serde(default)]
     pub num_peers: u32,
+    #[serde(default)]
     pub num_pending_channels: u32,
+    #[serde(default)]
     pub num_active_channels: u32,
+    #[serde(default)]
     pub num_inactive_channels: u32,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct Htlc {}
+
 #[derive(Debug, Deserialize)]
-struct Htlc {
-    // direction: String,
-    // state: String,
+#[serde(untagged)]
+enum Msat {
+    Num(u64),
+    Text(String),
+}
+
+impl Default for Msat {
+    fn default() -> Self {
+        Self::Num(0)
+    }
+}
+
+impl Msat {
+    fn msats(&self) -> u64 {
+        match self {
+            Self::Num(value) => *value,
+            Self::Text(text) => parse_msat(text),
+        }
+    }
+}
+
+fn parse_msat(text: &str) -> u64 {
+    let trimmed = text.trim();
+    let number = trimmed
+        .strip_suffix("msat")
+        .or_else(|| trimmed.strip_suffix("sat"))
+        .unwrap_or(trimmed)
+        .trim();
+    let parsed = number.parse::<u64>().unwrap_or(0);
+    if trimmed.ends_with("msat") || !trimmed.ends_with("sat") {
+        parsed
+    } else {
+        parsed.saturating_mul(1000)
+    }
 }
 
 #[derive(Debug, Deserialize)]
 struct Channel {
     state: String,
-    #[serde(default, alias = "total_msat")]
-    total_msat: u64,
-    #[serde(default, alias = "to_us_msat")]
-    to_us_msat: u64,
     #[serde(default)]
-    htlcs: Vec<Htlc>, // HTLCs for the channel
+    peer_connected: Option<bool>,
+    #[serde(default, alias = "total_msat")]
+    total_msat: Msat,
+    #[serde(default, alias = "to_us_msat")]
+    to_us_msat: Msat,
+    #[serde(default)]
+    htlcs: Vec<Htlc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChannelBucket {
+    Up,
+    Pending,
+    Down,
+}
+
+fn classify_channel(channel: &Channel) -> ChannelBucket {
+    match channel.state.as_str() {
+        "CHANNELD_NORMAL" => {
+            if channel.peer_connected.unwrap_or(true) {
+                ChannelBucket::Up
+            } else {
+                ChannelBucket::Down
+            }
+        }
+        "OPENINGD"
+        | "CHANNELD_AWAITING_LOCKIN"
+        | "DUALOPEND_OPEN_INIT"
+        | "DUALOPEND_AWAITING_LOCKIN"
+        | "DUALOPEND_OPEN_COMMITTED"
+        | "DUALOPEND_OPEN_COMMIT_READY" => ChannelBucket::Pending,
+        _ => ChannelBucket::Down,
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ChannelSummary {
+    up: u32,
+    pending: u32,
+    down: u32,
+    capacity_sat: u64,
+    local_sat: u64,
+    pending_htlcs: u32,
+}
+
+fn summarize_channels(channels: &[Channel]) -> ChannelSummary {
+    let mut summary = ChannelSummary::default();
+    for channel in channels {
+        match classify_channel(channel) {
+            ChannelBucket::Up => summary.up += 1,
+            ChannelBucket::Pending => summary.pending += 1,
+            ChannelBucket::Down => summary.down += 1,
+        }
+        if channel.state == "CHANNELD_NORMAL" {
+            summary.capacity_sat += channel.total_msat.msats() / 1000;
+            summary.local_sat += channel.to_us_msat.msats() / 1000;
+        }
+        summary.pending_htlcs += channel.htlcs.len() as u32;
+    }
+    summary
 }
 
 #[derive(Debug, Deserialize)]
@@ -316,32 +409,26 @@ impl CoreLightning {
             }
         };
 
-        let (total_capacity, local_balance, num_pending_htlcs, message) =
+        let (total_capacity, local_balance, num_pending_htlcs, channel_counts, message) =
             match self.fetch_channels().await {
                 Ok(peers) => {
-                    let channels = peers.channels;
-
-                    let capacity = channels
-                        .iter()
-                        .filter(|channel| channel.state == "CHANNELD_NORMAL")
-                        .map(|c| c.total_msat / 1000)
-                        .sum::<u64>();
-
-                    let balance = channels
-                        .iter()
-                        .filter(|channel| channel.state == "CHANNELD_NORMAL")
-                        .map(|c| c.to_us_msat / 1000)
-                        .sum::<u64>();
-
-                    let pending_htlcs = channels
-                        .iter()
-                        .flat_map(|channel| channel.htlcs.iter())
-                        .count() as u32;
-
-                    (capacity, balance, pending_htlcs, String::new())
+                    let summary = summarize_channels(&peers.channels);
+                    (
+                        summary.capacity_sat,
+                        summary.local_sat,
+                        summary.pending_htlcs,
+                        Some((summary.up, summary.pending, summary.down)),
+                        String::new(),
+                    )
                 }
-                Err(e) => (0, 0, 0, format!("Channels fetch error: {}", e)),
+                Err(e) => (0, 0, 0, None, format!("Channels fetch error: {}", e)),
             };
+        let (num_active_channels, num_pending_channels, num_inactive_channels) = channel_counts
+            .unwrap_or((
+                info.num_active_channels,
+                info.num_pending_channels,
+                info.num_inactive_channels,
+            ));
         let (num_watchtowers, watchtower_status) = match self.fetch_watchtowers().await {
             Ok((count, status)) => (count, status),
             Err(e) => (None, Some(format!("request {}", e))),
@@ -353,9 +440,9 @@ impl CoreLightning {
             height: info.blockheight,
             alias: info.alias,
             num_peers: info.num_peers,
-            num_pending_channels: info.num_pending_channels,
-            num_active_channels: info.num_active_channels,
-            num_inactive_channels: info.num_inactive_channels,
+            num_pending_channels,
+            num_active_channels,
+            num_inactive_channels,
             total_capacity,
             local_balance,
             num_pending_htlcs,
@@ -370,11 +457,13 @@ impl CoreLightning {
         let _ = sender.send(Event::NodeUpdate(
             index,
             Arc::new(move |mut state| {
-                let widget_state = state
+                let title = state
                     .widget_state
                     .as_any()
                     .downcast_ref::<CoreLightningWidgetState>()
-                    .unwrap();
+                    .map(|widget_state| widget_state.title.clone())
+                    .filter(|title| !title.is_empty())
+                    .unwrap_or_else(|| "Core Lightning".to_string());
 
                 *state
                     .services
@@ -389,7 +478,7 @@ impl CoreLightning {
                 state.message = node_info.message.clone();
                 state.height = node_info.height;
                 state.widget_state = Box::new(CoreLightningWidgetState {
-                    title: widget_state.title.clone(),
+                    title,
                     alias: node_info.alias.clone(),
                     num_peers: node_info.num_peers,
                     num_pending_channels: node_info.num_pending_channels,
@@ -445,5 +534,95 @@ impl NodeProvider for CoreLightning {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_msat, summarize_channels, Channel, ChannelSummary, GetInfoResponse, Msat,
+        PeerChannelsResponse,
+    };
+
+    fn channel(state: &str, connected: Option<bool>, total_msat: u64, to_us_msat: u64) -> Channel {
+        Channel {
+            state: state.to_string(),
+            peer_connected: connected,
+            total_msat: Msat::Num(total_msat),
+            to_us_msat: Msat::Num(to_us_msat),
+            htlcs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn parse_msat_accepts_number_and_unit_strings() {
+        assert_eq!(parse_msat("5000000000msat"), 5_000_000_000);
+        assert_eq!(parse_msat("5000sat"), 5_000_000);
+        assert_eq!(parse_msat("42"), 42);
+    }
+
+    #[test]
+    fn counts_connected_normal_as_up_and_disconnected_as_down() {
+        let summary = summarize_channels(&[
+            channel("CHANNELD_NORMAL", Some(true), 1_000_000_000, 400_000_000),
+            channel("CHANNELD_NORMAL", Some(true), 2_000_000_000, 500_000_000),
+            channel("CHANNELD_NORMAL", Some(false), 3_000_000_000, 100_000_000),
+            channel("CHANNELD_AWAITING_LOCKIN", Some(true), 4_000_000_000, 0),
+            channel("ONCHAIN", Some(false), 5_000_000_000, 0),
+        ]);
+        assert_eq!(
+            summary,
+            ChannelSummary {
+                up: 2,
+                pending: 1,
+                down: 2,
+                capacity_sat: 6_000_000,
+                local_sat: 1_000_000,
+                pending_htlcs: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn listpeerchannels_json_counts_live_shape() {
+        let parsed: PeerChannelsResponse = serde_json::from_str(
+            r#"{
+              "channels": [
+                {
+                  "state": "CHANNELD_NORMAL",
+                  "peer_connected": true,
+                  "total_msat": 5000000000,
+                  "to_us_msat": 1000000000,
+                  "htlcs": [{}]
+                },
+                {
+                  "state": "CHANNELD_NORMAL",
+                  "peer_connected": false,
+                  "total_msat": "2000000000msat",
+                  "to_us_msat": "500000000msat"
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            summarize_channels(&parsed.channels),
+            ChannelSummary {
+                up: 1,
+                pending: 0,
+                down: 1,
+                capacity_sat: 7_000_000,
+                local_sat: 1_500_000,
+                pending_htlcs: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn getinfo_defaults_missing_channel_counts() {
+        let info: GetInfoResponse =
+            serde_json::from_str(r#"{"alias":"test","blockheight":800000}"#).unwrap();
+        assert_eq!(info.num_active_channels, 0);
+        assert_eq!(info.num_peers, 0);
     }
 }
