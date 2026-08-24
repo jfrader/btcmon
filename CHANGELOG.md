@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Core Lightning channel row counts connected `CHANNELD_NORMAL` peers as up, and disconnected or closing ones as down.
+
 ### Improvements
 
 - Price and fee panels keep the last good value when a refresh fails and show `STALE` or `ERR` instead of going blank.
