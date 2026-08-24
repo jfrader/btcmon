@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::fmt;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -114,9 +115,15 @@ async fn price_checker<T: PriceProvider>(
         }
         tokio::select! {
             () = token.cancelled() => {}
-            res = provider.fetch_current_price(&currency) => {
+            res = tokio::time::timeout(Duration::from_secs(15), provider.fetch_current_price(&currency)) => {
                 let update = match res {
-                    Ok(res) => match res.price_in_currency.parse::<f64>() {
+                    Err(_) => PriceState {
+                        currency,
+                        last_price_in_currency: None,
+                        last_error: Some("timed out".to_string()),
+                        last_ok_at: None,
+                    },
+                    Ok(Ok(res)) => match res.price_in_currency.parse::<f64>() {
                         Ok(price) => PriceState {
                             currency,
                             last_price_in_currency: Some(price),
@@ -130,7 +137,7 @@ async fn price_checker<T: PriceProvider>(
                             last_ok_at: None,
                         },
                     },
-                    Err(error) => PriceState {
+                    Ok(Err(error)) => PriceState {
                         currency,
                         last_price_in_currency: None,
                         last_error: Some(short_error(&*error)),
