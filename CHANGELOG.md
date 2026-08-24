@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Price and fee fetches time out after 10–15 s instead of hanging forever on a dead connection, which left the price frozen without a STALE/ERR flag.
 - Core Lightning channel row counts connected `CHANNELD_NORMAL` peers as up, and disconnected or closing ones as down.
 
 ### Improvements

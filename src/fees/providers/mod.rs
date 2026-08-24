@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::time::Duration;
 
 use super::{FeeResult, FeeServiceProvider};
 pub struct FeesBlockchainInfo;
@@ -18,7 +19,9 @@ impl FeeServiceProvider for FeesBlockchainInfo {
     }
 
     async fn fetch_current_fees(&mut self) -> Result<FeeResult, Box<dyn std::error::Error>> {
-        let client = reqwest::Client::builder().build()?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
         let response = client
             .get("https://api.blockchain.info/mempool/fees")
             .send()

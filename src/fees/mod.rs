@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -93,13 +94,21 @@ async fn fees_checker<T: FeeServiceProvider>(
         }
         tokio::select! {
             () = token.cancelled() => {}
-            res = provider.fetch_current_fees() => {
+            res = tokio::time::timeout(Duration::from_secs(15), provider.fetch_current_fees()) => {
                 let update = match res {
-                    Ok(result) => FeesState {
+                    Err(_) => FeesState {
+                        result: FeeResult {
+                            low: None,
+                            medium: None,
+                            high: None,
+                        },
+                        last_error: Some("timed out".to_string()),
+                    },
+                    Ok(Ok(result)) => FeesState {
                         result,
                         last_error: None,
                     },
-                    Err(error) => FeesState {
+                    Ok(Err(error)) => FeesState {
                         result: FeeResult {
                             low: None,
                             medium: None,
@@ -109,7 +118,6 @@ async fn fees_checker<T: FeeServiceProvider>(
                     },
                 };
                 let _ = sender.send(Event::FeeUpdate(update));
-
             }
         }
 
