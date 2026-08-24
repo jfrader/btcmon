@@ -216,37 +216,49 @@ fn render_node_status(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_price_view(config: &AppConfig, app: &mut App, frame: &mut Frame, area: Rect) {
-    let spark_height = if area.height >= 12 { 2 } else { 0 };
-    let footer_height = if area.height >= 10 { 2 } else { 1 };
+    let footer_height = if app.state.price.last_error.is_some() {
+        1
+    } else {
+        0
+    };
+    let chart_height = match area.height {
+        12.. => 5,
+        10 | 11 => 4,
+        8 | 9 => 3,
+        _ => 0,
+    };
+    let chart_height = (chart_height as u16).saturating_sub(footer_height);
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(spark_height),
+            Constraint::Length(chart_height),
             Constraint::Length(footer_height),
         ])
         .split(area);
     render_price_widget(app, frame, layout[0], "Bitcoin Price", PixelSize::Full);
 
-    if spark_height > 0 {
+    if chart_height > 0 {
         let values: Vec<f64> = app
             .state
             .price_history
             .iter()
             .map(|(_, price)| *price)
             .collect();
-        let spark = crate::format::sparkline(&values, layout[1].width as usize);
-        Paragraph::new(spark)
+        let chart =
+            crate::format::line_chart(&values, layout[1].width as usize, chart_height as usize);
+        Paragraph::new(chart.join("\n"))
             .style(Style::default().fg(BITCOIN_ORANGE))
-            .alignment(Alignment::Center)
             .render(layout[1], frame.buffer_mut());
     }
 
-    let (status_text, status_style) = get_price_ticker_footer(config, &app.state);
-    Paragraph::new(status_text)
-        .style(status_style)
-        .alignment(Alignment::Center)
-        .render(layout[2], frame.buffer_mut());
+    if footer_height > 0 {
+        let (status_text, status_style) = get_price_variation_text(config, &app.state);
+        Paragraph::new(status_text)
+            .style(status_style)
+            .alignment(Alignment::Center)
+            .render(layout[2], frame.buffer_mut());
+    }
 }
 
 fn render_price_widget(
@@ -668,32 +680,6 @@ fn node_glance_lines(state: &crate::node::NodeState, streamer_mode: bool) -> Vec
         ]));
     }
     lines
-}
-
-fn get_price_ticker_footer(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
-    let (change, style) = get_price_variation_text(config, state);
-    if state.price.last_error.is_some() {
-        return (change, style);
-    }
-
-    let values: Vec<f64> = state
-        .price_history
-        .iter()
-        .map(|(_, price)| *price)
-        .collect();
-    if values.is_empty() {
-        return (change, style);
-    }
-    let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
-    (
-        format!(
-            "{change}  ·  H {}  L {}",
-            crate::format::commas(high.trunc() as u64),
-            crate::format::commas(low.trunc() as u64)
-        ),
-        style,
-    )
 }
 
 fn get_price_variation_text(config: &AppConfig, state: &crate::app::AppState) -> (String, Style) {
