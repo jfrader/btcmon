@@ -9,6 +9,7 @@ use btcmon::node::providers::core_lightning::{
 };
 use btcmon::node::providers::lnd::{LndNode, LndWidget, LndWidgetState};
 use btcmon::node::NodeProvider;
+use btcmon::touch::spawn_touch_listener;
 use btcmon::tui::Tui;
 use btcmon::widget::{DynamicNodeStatefulWidget, DynamicState};
 use ratatui::backend::CrosstermBackend;
@@ -30,12 +31,18 @@ async fn main() -> AppResult<()> {
     let mut providers: Vec<Box<dyn NodeProvider + Send + 'static>> = vec![];
     let mut widgets: Vec<Box<dyn DynamicNodeStatefulWidget>> = vec![];
     let mut widget_states: Vec<Box<dyn DynamicState>> = vec![];
+    let mut node_names: Vec<String> = vec![];
 
     let mut price_only = false;
 
     // Use nodes from config.nodes if present, otherwise use single node configuration
     if !config.nodes.is_empty() {
         for node in &config.nodes {
+            let configured_name = node
+                .name
+                .as_ref()
+                .filter(|name| !name.trim().is_empty())
+                .cloned();
             match node.provider.as_str() {
                 "bitcoin_core" => {
                     if let Some(settings) = &node.bitcoin_core {
@@ -43,6 +50,9 @@ async fn main() -> AppResult<()> {
                             providers.push(Box::new(BitcoinCore::new(settings)));
                             widgets.push(Box::new(BitcoinCoreWidget));
                             widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
+                            node_names.push(
+                                configured_name.unwrap_or_else(|| "Bitcoin Core".to_string()),
+                            );
                         }
                     }
                 }
@@ -52,6 +62,9 @@ async fn main() -> AppResult<()> {
                             providers.push(Box::new(CoreLightning::new(settings)));
                             widgets.push(Box::new(CoreLightningWidget));
                             widget_states.push(Box::new(CoreLightningWidgetState::default()));
+                            node_names.push(
+                                configured_name.unwrap_or_else(|| "Core Lightning".to_string()),
+                            );
                         }
                     }
                 }
@@ -61,6 +74,7 @@ async fn main() -> AppResult<()> {
                             providers.push(Box::new(LndNode::new(settings)));
                             widgets.push(Box::new(LndWidget));
                             widget_states.push(Box::new(LndWidgetState::default()));
+                            node_names.push(configured_name.unwrap_or_else(|| "LND".to_string()));
                         }
                     }
                 }
@@ -74,14 +88,17 @@ async fn main() -> AppResult<()> {
             providers.push(Box::new(LndNode::new(&config.lnd)));
             widgets.push(Box::new(LndWidget));
             widget_states.push(Box::new(LndWidgetState::default()));
+            node_names.push("LND".to_string());
         } else if !config.core_lightning.rest_address.is_empty() {
             providers.push(Box::new(CoreLightning::new(&config.core_lightning)));
             widgets.push(Box::new(CoreLightningWidget));
             widget_states.push(Box::new(CoreLightningWidgetState::default()));
+            node_names.push("Core Lightning".to_string());
         } else if !config.bitcoin_core.host.is_empty() {
             providers.push(Box::new(BitcoinCore::new(&config.bitcoin_core)));
             widgets.push(Box::new(BitcoinCoreWidget));
             widget_states.push(Box::new(BitcoinCoreWidgetState::default()));
+            node_names.push("Bitcoin Core".to_string());
         } else {
             price_only = true;
         }
@@ -101,18 +118,19 @@ async fn main() -> AppResult<()> {
         }
     }
 
-    let mut app = App::new(thread, widgets, widget_states, config.clone());
+    let mut app = App::new(thread, widgets, widget_states, node_names, config.clone());
 
     let backend = CrosstermBackend::new(io::stderr());
     let terminal = Terminal::new(backend)?;
     let events = EventHandler::new(
-        config.tick_rate.parse::<u64>().unwrap(),
+        config.tick_rate.parse::<u64>().unwrap_or(250),
         app.thread.sender.clone(),
         receiver,
     );
 
     let mut tui = Tui::new(terminal, events);
     tui.init()?;
+    spawn_touch_listener(app.thread.clone(), config.touch.clone());
     tui.draw(&config, &mut app)?;
 
     // Initialize all nodes
@@ -124,7 +142,7 @@ async fn main() -> AppResult<()> {
         app.init_price();
     }
 
-    if config.fees.enabled && !price_only {
+    if config.fees.enabled {
         app.init_fees();
     }
 

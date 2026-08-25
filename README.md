@@ -25,28 +25,42 @@ btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/
 
 See the [Example config.toml](share/config/example.toml) file
 
-## Configuration Options
+## Touch controls
+
+On a Linux framebuffer console, btcmon reads the digitizer (`ADS7846` / tft35a)
+directly. Xterm mouse reporting still works under VNC. The bottom dock provides
+large touch targets:
+
+- `<` / `>` selects and pins the previous or next node so it stays on screen.
+- Tapping the node name toggles rotation between `AUTO` and `PINNED` (and resumes automatic rotation after a manual selection).
+- Tapping `VIEW` opens the Overview, Node, Price, and Fees picker. Only enabled views are shown.
+
+The keyboard equivalents are Left/Right (node), Space or `r` (auto/pinned), `v` (view picker), Tab/Shift-Tab (next/previous view), `1`-`4` (direct view), and `q`/Esc (quit). If the view picker is open, Esc closes it first.
+
+When price is the only enabled source, the dock is hidden so the price keeps the entire screen. Enabling fees in a price-only config adds the touch view picker.
+
+## Configuration options
 
 ```toml
 tick_rate = 250
+node_switch_interval = 5
 
-[node]
-provider = "core_lightning"
-
-[bitcoin_core]
+[[nodes]]
+name = "Bitcoin Core"
+provider = "bitcoin_core"
+[nodes.bitcoin_core]
 host = "127.0.0.1"
-rpc_port = 18443
-rpc_user = "polaruser"
-rpc_password = "polarpass"
+rpc_port = 8332
+rpc_user = "user"
+rpc_password = "password"
 zmq_port = 28334
 
-[core_lightning]
+[[nodes]]
+name = "Lightning"
+provider = "core_lightning"
+[nodes.core_lightning]
 rest_address = "http://127.0.0.1:3010"
 rest_rune = "replaceme"
-
-[lnd]
-rest_address = "https://127.0.0.1:8080"
-macaroon_hex = "replaceme"
 
 [price]
 enabled = true
@@ -57,8 +71,9 @@ variation_threshold = 0.0
 
 [fees]
 enabled = true
-
 ```
+
+Each `[[nodes]]` entry can use `bitcoin_core`, `core_lightning`, or `lnd`. The optional `name` is used in the touch dock. See [the multiple-node example](share/config/example-multiple.toml) and [the price-only example](share/config/price-only.toml).
 
 ## Screenshot
 

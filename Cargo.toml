@@ -2,7 +2,7 @@
 name = "btcmon"
 version = "0.1.0"
 authors = ["fran <jfrader@pm.me>"]
-license = "MIT"
+license = "GPL-3.0"
 edition = "2021"
 
 [dependencies]
@@ -27,3 +27,4 @@ anyhow = "1.0.86"
 zmq = "0.10.0"
 bitcoincore-zmq = { version = "1.5.1", features = ["async"] }
 tui-widgets = { version = "0.4.1", features = ["tui-big-text", "tui-popup"] }
+evdev = { version = "0.13.2", features = ["tokio"] }

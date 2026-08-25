@@ -45,7 +45,31 @@ pub struct FeesSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct TouchSettings {
+    pub enabled: bool,
+    pub device: String,
+    pub swap_xy: bool,
+    pub invert_x: bool,
+    pub invert_y: bool,
+}
+
+impl Default for TouchSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            device: String::new(),
+            swap_xy: false,
+            invert_x: false,
+            invert_y: false,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct NodeConfig {
+    #[serde(default)]
+    pub name: Option<String>,
     pub provider: String,
     pub bitcoin_core: Option<BitcoinCoreSettings>,
     pub core_lightning: Option<CoreLightningSettings>,
@@ -65,6 +89,8 @@ pub struct AppConfig {
     pub lnd: LndSettings,
     #[serde(default)]
     pub nodes: Vec<NodeConfig>,
+    #[serde(default)]
+    pub touch: TouchSettings,
 }
 
 fn match_string_to_bool(value: &str) -> bool {
@@ -104,7 +130,12 @@ impl AppConfig {
             .set_default("price.variation", "minute")?
             .set_default("price.variation_threshold", 0.0)?
             // fees
-            .set_default("fees.enabled", true)?;
+            .set_default("fees.enabled", true)?
+            .set_default("touch.enabled", true)?
+            .set_default("touch.device", "")?
+            .set_default("touch.swap_xy", false)?
+            .set_default("touch.invert_x", false)?
+            .set_default("touch.invert_y", false)?;
 
         let mut default_config_file: String = String::from("/etc/btcmon/btcmon.toml");
 
@@ -137,7 +168,8 @@ impl AppConfig {
                 .and_then(|v| Some(v.first().unwrap().as_str()))
             {
                 match key.as_str() {
-                    "price.enabled" | "fees.enabled" | "streamer_mode" => {
+                    "price.enabled" | "fees.enabled" | "streamer_mode" | "touch.enabled"
+                    | "touch.swap_xy" | "touch.invert_x" | "touch.invert_y" => {
                         s = s.set_override(key, match_string_to_bool(value))?;
                     }
                     _ => {
