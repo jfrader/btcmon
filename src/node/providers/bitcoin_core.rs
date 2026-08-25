@@ -38,6 +38,12 @@ pub struct BitcoinCoreWidgetState {
     pub title: String,
     pub headers: u64,
     pub last_hash: String,
+    pub chain: String,
+    pub peers: u64,
+    pub mempool_tx: u64,
+    pub size_on_disk: u64,
+    pub verification_progress: f64,
+    pub pruned: bool,
 }
 
 impl DynamicState for BitcoinCoreWidgetState {
@@ -55,7 +61,13 @@ impl DynamicState for BitcoinCoreWidgetState {
 pub struct BitcoinCoreWidget;
 
 impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
-    fn render(&self, area: Rect, buf: &mut Buffer, node_state: &mut NodeState, _config: &AppConfig) {
+    fn render(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        node_state: &mut NodeState,
+        _config: &AppConfig,
+    ) {
         let mut default = BitcoinCoreWidgetState::default();
         let state = node_state
             .widget_state
@@ -65,25 +77,87 @@ impl DynamicNodeStatefulWidget for BitcoinCoreWidget {
 
         let block_height = match node_state.status {
             NodeStatus::Synchronizing => Line::from(vec![
-                Span::raw("Block Height: "),
-                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Height: "),
+                Span::styled(
+                    crate::format::commas(node_state.height),
+                    Style::new().fg(Color::White),
+                ),
                 Span::raw("/"),
-                Span::styled(state.headers.to_string(), Style::new().fg(Color::Blue)),
+                Span::styled(
+                    crate::format::commas(state.headers),
+                    Style::new().fg(Color::Blue),
+                ),
             ]),
             _ => Line::from(vec![
-                Span::raw("Block Height: "),
-                Span::styled(node_state.height.to_string(), Style::new().fg(Color::White)),
+                Span::raw("Height: "),
+                Span::styled(
+                    crate::format::commas(node_state.height),
+                    Style::new().fg(Color::White),
+                ),
             ]),
         };
 
-        let lines = vec![
+        let sync_pct = (state.verification_progress * 100.0).clamp(0.0, 100.0);
+        let network = if state.peers == 0 {
+            crate::format::chain_label(&state.chain).to_string()
+        } else {
+            format!(
+                "{} · {} peers",
+                crate::format::chain_label(&state.chain),
+                crate::format::commas(state.peers)
+            )
+        };
+        let mut lines = vec![
             block_height,
             Line::from(vec![
-                Span::raw("Last Block: "),
-                Span::styled(state.last_hash.clone(), Style::new().fg(Color::White)),
+                Span::raw("Tip: "),
+                Span::styled(
+                    crate::format::short_hash(&state.last_hash),
+                    Style::new().fg(Color::White),
+                ),
             ]),
-            Line::raw("------"),
+            Line::from(vec![
+                Span::raw("Network: "),
+                Span::styled(network, Style::new().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::raw("Mempool: "),
+                Span::styled(
+                    format!("{} tx", crate::format::commas(state.mempool_tx)),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Disk: "),
+                Span::styled(
+                    crate::format::bytes_compact(state.size_on_disk),
+                    Style::new().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Sync: "),
+                Span::styled(
+                    if state.pruned {
+                        format!("{sync_pct:.0}% · pruned")
+                    } else {
+                        format!("{sync_pct:.0}%")
+                    },
+                    Style::new().fg(Color::White),
+                ),
+            ]),
         ];
+        if node_state.status == NodeStatus::Synchronizing {
+            lines.insert(
+                1,
+                Line::from(vec![
+                    Span::raw("Headers: "),
+                    Span::styled(
+                        crate::format::commas(state.headers),
+                        Style::new().fg(Color::Blue),
+                    ),
+                ]),
+            );
+        }
 
         let widget = BlockedParagraph::new(&state.title, node_state.status, lines);
         widget.render(area, buf);
@@ -165,6 +239,16 @@ impl BitcoinCore {
 
         match self.rpc_client.get_blockchain_info() {
             Ok(blockchain_info) => {
+                let peers = self
+                    .rpc_client
+                    .get_network_info()
+                    .map(|info| info.connections as u64)
+                    .ok();
+                let mempool_tx = self
+                    .rpc_client
+                    .get_mempool_info()
+                    .map(|info| info.size as u64)
+                    .ok();
                 let _ = sender.send(Event::NodeUpdate(
                     index,
                     Arc::new(move |mut state| {
@@ -190,17 +274,31 @@ impl BitcoinCore {
                             .entry("RPC".to_string())
                             .or_insert(NodeStatus::Online) = NodeStatus::Online;
 
-                        let title = state
+                        let previous = state
                             .widget_state
                             .as_any()
                             .downcast_ref::<BitcoinCoreWidgetState>()
+                            .cloned();
+                        let title = previous
+                            .as_ref()
                             .map(|ws| ws.title.clone())
-                            .unwrap_or("Bitcoin Core".to_string());
+                            .filter(|title| !title.is_empty())
+                            .unwrap_or_else(|| "Bitcoin Core".to_string());
 
                         state.widget_state = Box::new(BitcoinCoreWidgetState {
                             title,
                             headers: blockchain_info.headers,
                             last_hash: blockchain_info.best_block_hash.to_string(),
+                            chain: blockchain_info.chain.to_string(),
+                            peers: peers
+                                .or_else(|| previous.as_ref().map(|s| s.peers))
+                                .unwrap_or(0),
+                            mempool_tx: mempool_tx
+                                .or_else(|| previous.as_ref().map(|s| s.mempool_tx))
+                                .unwrap_or(0),
+                            size_on_disk: blockchain_info.size_on_disk,
+                            verification_progress: blockchain_info.verification_progress,
+                            pruned: blockchain_info.pruned,
                         });
 
                         state
@@ -257,11 +355,9 @@ impl BitcoinCore {
                                             .unwrap();
                                         if widget_state.last_hash != hash {
                                             state.height += 1;
-                                            state.widget_state = Box::new(BitcoinCoreWidgetState {
-                                                title: widget_state.title.clone(),
-                                                headers: widget_state.headers,
-                                                last_hash: hash.clone(),
-                                            });
+                                            let mut next = widget_state.clone();
+                                            next.last_hash = hash.clone();
+                                            state.widget_state = Box::new(next);
                                         }
 
                                         state.last_hash_instant = Some(Instant::now());
@@ -389,9 +485,8 @@ impl NodeProvider for BitcoinCore {
                 state.host = host.clone();
                 state.message = "Initializing Bitcoin Core...".to_string();
                 state.widget_state = Box::new(BitcoinCoreWidgetState {
-                    title: format!("Bitcoin Core ({})", host),
-                    headers: 0,
-                    last_hash: "".to_string(),
+                    title: format!("Bitcoin Core ({host})"),
+                    ..BitcoinCoreWidgetState::default()
                 });
                 state
                     .services

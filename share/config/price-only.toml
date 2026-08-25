@@ -1,6 +1,9 @@
 tick_rate = 250
 streamer_mode = false
 
+# Keep fees disabled for an uninterrupted full-screen price. Set this to true
+# to make Price and Fees selectable from the touchscreen view menu.
+
 [price]
 enabled = true
 currency = "USD"

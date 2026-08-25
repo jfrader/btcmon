@@ -1,4 +1,5 @@
 tick_rate = 250
+node_switch_interval = 5
 
 [price]
 enabled = true
@@ -11,6 +12,7 @@ variation_threshold = 0.0
 enabled = true
 
 [[nodes]]
+name = "Bitcoin Core"
 provider = "bitcoin_core"
 [nodes.bitcoin_core]
 host = "127.0.0.1"
@@ -20,12 +22,14 @@ rpc_password = "polarpass"
 zmq_port = 28334
 
 [[nodes]]
+name = "Core Lightning"
 provider = "core_lightning"
 [nodes.core_lightning]
 rest_address = "http://127.0.0.1:3010"
 rest_rune = "your_actual_rune"
 
 [[nodes]]
+name = "LND"
 provider = "lnd"
 [nodes.lnd]
 rest_address = "https://127.0.0.1:8080"

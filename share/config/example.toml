@@ -1,10 +1,12 @@
 tick_rate = 250
 streamer_mode = false
+node_switch_interval = 5
 
-[node]
+[[nodes]]
+name = "Bitcoin Core"
 provider = "bitcoin_core"
 
-[bitcoin_core]
+[nodes.bitcoin_core]
 host = "127.0.0.1"
 rpc_port = 18443
 rpc_user = "polaruser"
@@ -20,3 +22,9 @@ variation_threshold = 0.0
 
 [fees]
 enabled = true
+
+[touch]
+enabled = true
+swap_xy = false
+invert_x = false
+invert_y = false
