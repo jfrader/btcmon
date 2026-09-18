@@ -1,5 +1,8 @@
 # Terminal Bitcoin Monitor
 
+[![ci](https://img.shields.io/github/actions/workflow/status/jfrader/btcmon/rust.yml?branch=master&style=flat&label=ci)](https://github.com/jfrader/btcmon/actions)
+[![license](https://img.shields.io/github/license/jfrader/btcmon?style=flat)](./LICENSE)
+
 ![btcmon](share/screenshots/demo.gif?raw=true)
 
 Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node.
