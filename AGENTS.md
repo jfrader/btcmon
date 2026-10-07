@@ -14,4 +14,12 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-GitHub-hosted CI is `ubuntu-latest` only. Any machine-local deploy is a runner hook (`BTCMON_CI_HOOK`), not a workflow job. Do not put hostnames, LAN paths, or deploy targets in this repository.
+`fmt` / `clippy` stay local closeout unless added to CI later.
+
+## CI (currently disabled)
+
+- `.github/workflows/rust.yml` is currently **disabled_manually** in GitHub Actions (not renamed or deleted). Re-enabling is an optional follow-up.
+- When enabled, the workflow has:
+  - `test` on `ubuntu-latest`: `cargo build --verbose` then `cargo test --verbose`
+  - `native` on self-hosted `[self-hosted, linux, ARM64]` (push/workflow_dispatch only, not PRs): release build then `./scripts/ci-hook.sh` (honors `BTCMON_CI_HOOK`)
+- Do not put hostnames, LAN paths, or deploy targets in this repository.
