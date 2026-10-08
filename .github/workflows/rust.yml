@@ -12,7 +12,10 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - name: Install libzmq
@@ -22,19 +25,3 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-  native:
-    if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, linux, ARM64]
-    needs: test
-    env:
-      CARGO_BUILD_JOBS: 2
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build release
-        run: |
-          if [ -f "$HOME/.cargo/env" ]; then
-            . "$HOME/.cargo/env"
-          fi
-          cargo build --release --locked
-      - name: Local hook
-        run: ./scripts/ci-hook.sh
