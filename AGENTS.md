@@ -14,4 +14,4 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-GitHub-hosted CI is `ubuntu-latest` only. Any machine-local deploy is a runner hook (`BTCMON_CI_HOOK`), not a workflow job. Do not put hostnames, LAN paths, or deploy targets in this repository.
+CI runs on GitHub-hosted runners (x86_64 and ARM64).
