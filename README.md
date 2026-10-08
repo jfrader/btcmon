@@ -7,26 +7,14 @@
 
 Command line monitor for the Bitcoin Network and your Bitcoin and Lightning node.
 
-## Installation
-
-`git clone https://github.com/jfrader/btcmon.git`
-
-`cd btcmon`
-
-`cargo install --path .`
-
-## Usage
+## Install and run
 
 ```sh
-btcmon --bitcoin_core.rpc_user="user" --bitcoin_core.rpc_password="password"
-```
-or
-
-```sh
-btcmon --config /path/to/config # default /etc/btcmon/btcmon.toml and ~/.btcmon/btcmon.toml
+cargo install --git https://github.com/jfrader/btcmon
+btcmon --config /path/to/config.toml  # default: ~/.btcmon/btcmon.toml
 ```
 
-See the [Example config.toml](share/config/example.toml) file
+Config keys also work as flags, e.g. `--bitcoin_core.rpc_user=user`.
 
 ## Touch controls
 
@@ -42,41 +30,14 @@ The keyboard equivalents are Left/Right (node), Space or `r` (auto/pinned), `v` 
 
 When price is the only enabled source, the dock is hidden so the price keeps the entire screen. Enabling fees in a price-only config adds the touch view picker.
 
-## Configuration options
+## Configuration
 
-```toml
-tick_rate = 250
-node_switch_interval = 5
+Start from an example: [single node](share/config/example.toml), [multiple nodes](share/config/example-multiple.toml), or [price only](share/config/price-only.toml).
 
-[[nodes]]
-name = "Bitcoin Core"
-provider = "bitcoin_core"
-[nodes.bitcoin_core]
-host = "127.0.0.1"
-rpc_port = 8332
-rpc_user = "user"
-rpc_password = "password"
-zmq_port = 28334
-
-[[nodes]]
-name = "Lightning"
-provider = "core_lightning"
-[nodes.core_lightning]
-rest_address = "http://127.0.0.1:3010"
-rest_rune = "replaceme"
-
-[price]
-enabled = true
-currency = "USD"
-big_text = true
-variation = "minute"
-variation_threshold = 0.0
-
-[fees]
-enabled = true
-```
-
-Each `[[nodes]]` entry can use `bitcoin_core`, `core_lightning`, or `lnd`. The optional `name` is used in the touch dock. See [the multiple-node example](share/config/example-multiple.toml) and [the price-only example](share/config/price-only.toml).
+- `[[nodes]]`: optional `name` (shown in the dock) and `provider`: `bitcoin_core` (`host`, `rpc_port`, `rpc_user`, `rpc_password`, `zmq_port`), `core_lightning` (`rest_address`, `rest_rune`), or `lnd` (`rest_address`, `macaroon_hex`).
+- `[price]`: `enabled`, `currency`, `big_text`, `variation`, `variation_threshold`. `[fees]`: `enabled`.
+- `[touch]`: `enabled`, `device` (empty auto-detects), `swap_xy`, `invert_x`, `invert_y`.
+- Top level: `tick_rate` (ms), `node_switch_interval` (s), `streamer_mode` (hides channel capacity).
 
 ## Screenshot
 
